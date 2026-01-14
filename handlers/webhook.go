@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -8,18 +9,29 @@ import (
 
 	"github.com/kubeagents/kubeagents/internal"
 	"github.com/kubeagents/kubeagents/models"
+	"github.com/kubeagents/kubeagents/notifier"
 	"github.com/kubeagents/kubeagents/store"
 )
 
 // WebhookHandler handles webhook status reports
 type WebhookHandler struct {
-	store *store.Store
+	store    *store.Store
+	notifier *notifier.NotificationManager
 }
 
-// NewWebhookHandler creates a new webhook handler
+// NewWebhookHandler creates a new webhook handler without notifications
 func NewWebhookHandler(s *store.Store) *WebhookHandler {
 	return &WebhookHandler{
-		store: s,
+		store:    s,
+		notifier: nil,
+	}
+}
+
+// NewWebhookHandlerWithNotifier creates a new webhook handler with notifications
+func NewWebhookHandlerWithNotifier(s *store.Store, n *notifier.NotificationManager) *WebhookHandler {
+	return &WebhookHandler{
+		store:    s,
+		notifier: n,
 	}
 }
 
@@ -69,6 +81,30 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // processStatusReport processes a status report and updates the store
 func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport) error {
 	now := time.Now()
+
+	// Get previous status for transition detection
+	var previousStatus string
+	var startTimestamp time.Time
+	history, _ := h.store.GetStatusHistory(sr.AgentID, sr.SessionTopic)
+	if len(history) > 0 {
+		// Find latest status
+		latest := history[0]
+		for _, s := range history {
+			if s.Timestamp.After(latest.Timestamp) {
+				latest = s
+			}
+		}
+		previousStatus = latest.Status
+
+		// Find the "running" status timestamp for duration calculation
+		for _, s := range history {
+			if s.Status == "running" {
+				if startTimestamp.IsZero() || s.Timestamp.Before(startTimestamp) {
+					startTimestamp = s.Timestamp
+				}
+			}
+		}
+	}
 
 	// Create or update agent
 	agent, err := h.store.GetAgent(sr.AgentID)
@@ -137,6 +173,34 @@ func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport) error {
 
 	if err := h.store.AddStatus(agentStatus); err != nil {
 		return err
+	}
+
+	// Check for status transition and send notification
+	if h.notifier != nil && previousStatus == "running" &&
+		(sr.Status == "success" || sr.Status == "failed") {
+
+		duration := time.Duration(0)
+		if !startTimestamp.IsZero() {
+			duration = sr.Timestamp.Sub(startTimestamp)
+		}
+
+		notificationData := &notifier.NotificationData{
+			AgentID:      sr.AgentID,
+			AgentName:    agent.Name,
+			SessionTopic: sr.SessionTopic,
+			FromStatus:   previousStatus,
+			ToStatus:     sr.Status,
+			Timestamp:    sr.Timestamp,
+			Message:      sr.Message,
+			Content:      sr.Content,
+			Duration:     duration,
+		}
+
+		// Send notification asynchronously (non-blocking)
+		if err := h.notifier.Notify(context.Background(), notificationData); err != nil {
+			// Log error but don't fail the request
+			log.Printf("Failed to queue notification: %v", err)
+		}
 	}
 
 	return nil

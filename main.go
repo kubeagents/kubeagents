@@ -14,19 +14,26 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/kubeagents/kubeagents/config"
 	"github.com/kubeagents/kubeagents/handlers"
+	"github.com/kubeagents/kubeagents/notifier"
 	"github.com/kubeagents/kubeagents/store"
 )
 
 func main() {
 	// Load configuration
 	cfg := config.Load()
-	
+
 	// Initialize store
 	st := store.NewStore()
-	
+
+	// Initialize notification manager
+	notificationManager := notifier.NewNotificationManager(
+		cfg.NotificationWebhookURL,
+		cfg.NotificationTimeout,
+	)
+
 	// Initialize handlers
 	healthHandler := handlers.HealthCheck
-	webhookHandler := handlers.NewWebhookHandler(st)
+	webhookHandler := handlers.NewWebhookHandlerWithNotifier(st, notificationManager)
 	agentHandler := handlers.NewAgentHandler(st)
 	
 	// Setup router
@@ -98,13 +105,22 @@ func main() {
 	
 	log.Println("Shutting down server...")
 	cancel()
-	
+
+	// Shutdown notification manager first (wait for pending notifications)
+	notifyShutdownCtx, notifyCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer notifyCancel()
+
+	if err := notificationManager.Shutdown(notifyShutdownCtx); err != nil {
+		log.Printf("Warning: Notification manager shutdown error: %v", err)
+	}
+
+	// Shutdown HTTP server
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShutdown()
-	
+
 	if err := srv.Shutdown(ctxShutdown); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
-	
+
 	log.Println("Server exited")
 }

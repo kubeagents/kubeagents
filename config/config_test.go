@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestLoad(t *testing.T) {
@@ -52,5 +53,108 @@ func TestLoad(t *testing.T) {
 	}
 	if cfg.CORSAllowedOrigins[1] != "https://example.com" {
 		t.Errorf("Load() CORS[1] = %v, want https://example.com", cfg.CORSAllowedOrigins[1])
+	}
+}
+
+func TestLoad_NotificationWebhookURL(t *testing.T) {
+	// Save original value
+	originalURL := os.Getenv("NOTIFICATION_WEBHOOK_URL")
+	defer func() {
+		if originalURL != "" {
+			os.Setenv("NOTIFICATION_WEBHOOK_URL", originalURL)
+		} else {
+			os.Unsetenv("NOTIFICATION_WEBHOOK_URL")
+		}
+	}()
+
+	tests := []struct {
+		name   string
+		envVal string
+		want   string
+	}{
+		{
+			name:   "webhook URL set",
+			envVal: "https://example.com/webhook",
+			want:   "https://example.com/webhook",
+		},
+		{
+			name:   "webhook URL empty",
+			envVal: "",
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envVal != "" {
+				os.Setenv("NOTIFICATION_WEBHOOK_URL", tt.envVal)
+			} else {
+				os.Unsetenv("NOTIFICATION_WEBHOOK_URL")
+			}
+
+			cfg := Load()
+			if cfg.NotificationWebhookURL != tt.want {
+				t.Errorf("Load() NotificationWebhookURL = %v, want %v", cfg.NotificationWebhookURL, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoad_NotificationTimeout(t *testing.T) {
+	// Save original value
+	originalTimeout := os.Getenv("NOTIFICATION_TIMEOUT_SECONDS")
+	defer func() {
+		if originalTimeout != "" {
+			os.Setenv("NOTIFICATION_TIMEOUT_SECONDS", originalTimeout)
+		} else {
+			os.Unsetenv("NOTIFICATION_TIMEOUT_SECONDS")
+		}
+	}()
+
+	tests := []struct {
+		name   string
+		envVal string
+		want   time.Duration
+	}{
+		{
+			name:   "custom timeout",
+			envVal: "10",
+			want:   10 * time.Second,
+		},
+		{
+			name:   "default timeout",
+			envVal: "",
+			want:   5 * time.Second,
+		},
+		{
+			name:   "invalid timeout uses default",
+			envVal: "invalid",
+			want:   5 * time.Second,
+		},
+		{
+			name:   "negative timeout uses default",
+			envVal: "-5",
+			want:   5 * time.Second,
+		},
+		{
+			name:   "zero timeout uses default",
+			envVal: "0",
+			want:   5 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envVal != "" {
+				os.Setenv("NOTIFICATION_TIMEOUT_SECONDS", tt.envVal)
+			} else {
+				os.Unsetenv("NOTIFICATION_TIMEOUT_SECONDS")
+			}
+
+			cfg := Load()
+			if cfg.NotificationTimeout != tt.want {
+				t.Errorf("Load() NotificationTimeout = %v, want %v", cfg.NotificationTimeout, tt.want)
+			}
+		})
 	}
 }

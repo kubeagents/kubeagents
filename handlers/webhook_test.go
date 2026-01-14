@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/kubeagents/kubeagents/notifier"
 	"github.com/kubeagents/kubeagents/store"
 )
 
@@ -447,4 +449,268 @@ func TestWebhookHandler_SessionExpirationTimeConfiguration(t *testing.T) {
 	if session.ExpiredAt != nil && !session.ExpiredAt.Equal(expectedExpiry) {
 		t.Logf("Note: expired_at will be set when session expires")
 	}
+}
+
+func TestWebhookHandler_StatusTransitionNotification_RunningToSuccess(t *testing.T) {
+	// Mock notification server
+	var notificationReceived atomic.Bool
+	var receivedPayload notifier.WebhookPayload
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		notificationReceived.Store(true)
+		json.NewDecoder(r.Body).Decode(&receivedPayload)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create store and handler with notifier
+	st := store.NewStore()
+	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
+	handler := NewWebhookHandlerWithNotifier(st, nm)
+
+	now := time.Now()
+
+	// First request: running status
+	reqBody1 := map[string]interface{}{
+		"agent_id":      "agent-001",
+		"agent_name":    "Test Agent",
+		"session_topic": "task-001",
+		"status":        "running",
+		"timestamp":     now.Format(time.RFC3339),
+	}
+	body1, _ := json.Marshal(reqBody1)
+	req1 := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body1))
+	req1.Header.Set("Content-Type", "application/json")
+	rr1 := httptest.NewRecorder()
+	handler.ServeHTTP(rr1, req1)
+
+	if rr1.Code != http.StatusOK {
+		t.Errorf("First request status = %v, want %v", rr1.Code, http.StatusOK)
+	}
+
+	time.Sleep(100 * time.Millisecond) // Wait for async
+	if notificationReceived.Load() {
+		t.Error("No notification should be sent for running status")
+	}
+
+	// Second request: success status (transition)
+	reqBody2 := map[string]interface{}{
+		"agent_id":      "agent-001",
+		"agent_name":    "Test Agent",
+		"session_topic": "task-001",
+		"status":        "success",
+		"timestamp":     now.Add(time.Minute).Format(time.RFC3339),
+		"message":       "Task completed",
+		"content":       "Result: OK",
+	}
+	body2, _ := json.Marshal(reqBody2)
+	req2 := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	rr2 := httptest.NewRecorder()
+
+	start := time.Now()
+	handler.ServeHTTP(rr2, req2)
+	duration := time.Since(start)
+
+	// Should return immediately (non-blocking)
+	if rr2.Code != http.StatusOK {
+		t.Errorf("Second request status = %v, want %v", rr2.Code, http.StatusOK)
+	}
+
+	if duration > 100*time.Millisecond {
+		t.Errorf("Response time = %v, want < 100ms (should be non-blocking)", duration)
+	}
+
+	// Wait for async notification
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify notification was sent
+	if !notificationReceived.Load() {
+		t.Fatal("Notification should be sent for running → success transition")
+	}
+
+	if receivedPayload.MsgType != "text" {
+		t.Errorf("Payload msg_type = %v, want text", receivedPayload.MsgType)
+	}
+
+	// Verify notification content
+	text := receivedPayload.Content.Text
+	expectedSubstrings := []string{
+		"agent-001",
+		"task-001",
+		"running → success",
+		"Task completed",
+		"Result: OK",
+	}
+
+	for _, substr := range expectedSubstrings {
+		if !bytes.Contains([]byte(text), []byte(substr)) {
+			t.Errorf("Notification text missing %q\nGot: %s", substr, text)
+		}
+	}
+}
+
+func TestWebhookHandler_StatusTransitionNotification_RunningToFailed(t *testing.T) {
+	// Mock notification server
+	var notificationReceived atomic.Bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		notificationReceived.Store(true)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	st := store.NewStore()
+	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
+	handler := NewWebhookHandlerWithNotifier(st, nm)
+
+	now := time.Now()
+
+	// running → failed transition
+	sendStatus(t, handler, "agent-001", "task-001", "running", now, "", "")
+	sendStatus(t, handler, "agent-001", "task-001", "failed", now.Add(time.Minute), "Task failed", "Error: timeout")
+
+	time.Sleep(200 * time.Millisecond)
+
+	if !notificationReceived.Load() {
+		t.Fatal("Notification should be sent for running → failed transition")
+	}
+}
+
+func TestWebhookHandler_NoNotificationForNonRunningTransition(t *testing.T) {
+	// Transition from pending → running should NOT trigger notification
+	var notificationReceived atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		notificationReceived.Store(true)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	st := store.NewStore()
+	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
+	handler := NewWebhookHandlerWithNotifier(st, nm)
+
+	now := time.Now()
+
+	// pending → running (should not notify)
+	sendStatus(t, handler, "agent-001", "task-001", "pending", now, "", "")
+	sendStatus(t, handler, "agent-001", "task-001", "running", now.Add(time.Second), "", "")
+
+	time.Sleep(200 * time.Millisecond)
+
+	if notificationReceived.Load() {
+		t.Error("No notification should be sent for pending → running transition")
+	}
+
+	// success → running (should not notify, but weird)
+	sendStatus(t, handler, "agent-002", "task-002", "success", now, "", "")
+	sendStatus(t, handler, "agent-002", "task-002", "running", now.Add(time.Second), "", "")
+
+	time.Sleep(200 * time.Millisecond)
+
+	if notificationReceived.Load() {
+		t.Error("No notification should be sent for success → running transition")
+	}
+}
+
+func TestWebhookHandler_NotificationFailureDoesNotBlockResponse(t *testing.T) {
+	// Even if notification fails, webhook should respond with 200
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError) // Fail
+	}))
+	defer server.Close()
+
+	st := store.NewStore()
+	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
+	handler := NewWebhookHandlerWithNotifier(st, nm)
+
+	now := time.Now()
+
+	sendStatus(t, handler, "agent-001", "task-001", "running", now, "", "")
+
+	start := time.Now()
+	rr := sendStatusWithResult(t, handler, "agent-001", "task-001", "success", now.Add(time.Second), "", "")
+	duration := time.Since(start)
+
+	// Should respond immediately
+	if rr.Code != http.StatusOK {
+		t.Errorf("Response status = %v, want %v", rr.Code, http.StatusOK)
+	}
+
+	if duration > 100*time.Millisecond {
+		t.Errorf("Response time = %v, want < 100ms", duration)
+	}
+}
+
+func TestWebhookHandler_NoNotificationWhenNotifierIsNil(t *testing.T) {
+	// Handler without notifier should work normally
+	st := store.NewStore()
+	handler := NewWebhookHandler(st) // No notifier
+
+	now := time.Now()
+
+	// running → success (no crash, no notification)
+	rr1 := sendStatusWithResult(t, handler, "agent-001", "task-001", "running", now, "", "")
+	if rr1.Code != http.StatusOK {
+		t.Errorf("First request status = %v, want %v", rr1.Code, http.StatusOK)
+	}
+
+	rr2 := sendStatusWithResult(t, handler, "agent-001", "task-001", "success", now.Add(time.Second), "Done", "")
+	if rr2.Code != http.StatusOK {
+		t.Errorf("Second request status = %v, want %v", rr2.Code, http.StatusOK)
+	}
+
+	// Should not crash or error
+}
+
+// Helper function to send status
+func sendStatus(t *testing.T, handler *WebhookHandler, agentID, sessionTopic, status string, timestamp time.Time, message, content string) {
+	reqBody := map[string]interface{}{
+		"agent_id":      agentID,
+		"agent_name":    "Test Agent",
+		"session_topic": sessionTopic,
+		"status":        status,
+		"timestamp":     timestamp.Format(time.RFC3339),
+	}
+	if message != "" {
+		reqBody["message"] = message
+	}
+	if content != "" {
+		reqBody["content"] = content
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("sendStatus() status = %v, want %v", rr.Code, http.StatusOK)
+	}
+}
+
+// Helper function to send status and return response
+func sendStatusWithResult(t *testing.T, handler *WebhookHandler, agentID, sessionTopic, status string, timestamp time.Time, message, content string) *httptest.ResponseRecorder {
+	reqBody := map[string]interface{}{
+		"agent_id":      agentID,
+		"agent_name":    "Test Agent",
+		"session_topic": sessionTopic,
+		"status":        status,
+		"timestamp":     timestamp.Format(time.RFC3339),
+	}
+	if message != "" {
+		reqBody["message"] = message
+	}
+	if content != "" {
+		reqBody["content"] = content
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	return rr
 }

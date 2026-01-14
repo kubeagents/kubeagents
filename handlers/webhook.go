@@ -15,12 +15,12 @@ import (
 
 // WebhookHandler handles webhook status reports
 type WebhookHandler struct {
-	store    *store.Store
+	store    store.Store
 	notifier *notifier.NotificationManager
 }
 
 // NewWebhookHandler creates a new webhook handler without notifications
-func NewWebhookHandler(s *store.Store) *WebhookHandler {
+func NewWebhookHandler(s store.Store) *WebhookHandler {
 	return &WebhookHandler{
 		store:    s,
 		notifier: nil,
@@ -28,7 +28,7 @@ func NewWebhookHandler(s *store.Store) *WebhookHandler {
 }
 
 // NewWebhookHandlerWithNotifier creates a new webhook handler with notifications
-func NewWebhookHandlerWithNotifier(s *store.Store, n *notifier.NotificationManager) *WebhookHandler {
+func NewWebhookHandlerWithNotifier(s store.Store, n *notifier.NotificationManager) *WebhookHandler {
 	return &WebhookHandler{
 		store:    s,
 		notifier: n,

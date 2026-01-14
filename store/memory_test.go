@@ -8,9 +8,9 @@ import (
 )
 
 func TestStore_CreateOrUpdateAgent(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	agent := &models.Agent{
 		AgentID:    "agent-001",
 		Name:       "Test Agent",
@@ -18,19 +18,19 @@ func TestStore_CreateOrUpdateAgent(t *testing.T) {
 		Registered: now,
 		LastSeen:   now,
 	}
-	
+
 	err := s.CreateOrUpdateAgent(agent)
 	if err != nil {
 		t.Fatalf("CreateOrUpdateAgent() error = %v, want nil", err)
 	}
-	
+
 	// Test update
 	agent.Name = "Updated Agent"
 	err = s.CreateOrUpdateAgent(agent)
 	if err != nil {
 		t.Fatalf("CreateOrUpdateAgent() update error = %v, want nil", err)
 	}
-	
+
 	retrieved, err := s.GetAgent("agent-001")
 	if err != nil {
 		t.Fatalf("GetAgent() error = %v, want nil", err)
@@ -41,9 +41,9 @@ func TestStore_CreateOrUpdateAgent(t *testing.T) {
 }
 
 func TestStore_GetAgent(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	agent := &models.Agent{
 		AgentID:    "agent-001",
 		Name:       "Test Agent",
@@ -51,7 +51,7 @@ func TestStore_GetAgent(t *testing.T) {
 		LastSeen:   now,
 	}
 	s.CreateOrUpdateAgent(agent)
-	
+
 	// Test existing agent
 	retrieved, err := s.GetAgent("agent-001")
 	if err != nil {
@@ -60,7 +60,7 @@ func TestStore_GetAgent(t *testing.T) {
 	if retrieved.AgentID != "agent-001" {
 		t.Errorf("GetAgent() agent_id = %v, want agent-001", retrieved.AgentID)
 	}
-	
+
 	// Test non-existing agent
 	_, err = s.GetAgent("agent-999")
 	if err != ErrNotFound {
@@ -69,9 +69,9 @@ func TestStore_GetAgent(t *testing.T) {
 }
 
 func TestStore_ListAgents(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	// Add multiple agents
 	for i := 1; i <= 3; i++ {
 		agent := &models.Agent{
@@ -82,7 +82,7 @@ func TestStore_ListAgents(t *testing.T) {
 		}
 		s.CreateOrUpdateAgent(agent)
 	}
-	
+
 	agents := s.ListAgents()
 	if len(agents) != 3 {
 		t.Errorf("ListAgents() count = %v, want 3", len(agents))
@@ -90,9 +90,9 @@ func TestStore_ListAgents(t *testing.T) {
 }
 
 func TestStore_CreateOrUpdateSession(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	// Create agent first
 	agent := &models.Agent{
 		AgentID:    "agent-001",
@@ -100,7 +100,7 @@ func TestStore_CreateOrUpdateSession(t *testing.T) {
 		LastSeen:   now,
 	}
 	s.CreateOrUpdateAgent(agent)
-	
+
 	session := &models.Session{
 		AgentID:      "agent-001",
 		SessionTopic: "task-001",
@@ -109,19 +109,19 @@ func TestStore_CreateOrUpdateSession(t *testing.T) {
 		Expired:      false,
 		TTLMinutes:   30,
 	}
-	
+
 	err := s.CreateOrUpdateSession(session)
 	if err != nil {
 		t.Fatalf("CreateOrUpdateSession() error = %v, want nil", err)
 	}
-	
+
 	// Test update
 	session.LastUpdated = now.Add(time.Hour)
 	err = s.CreateOrUpdateSession(session)
 	if err != nil {
 		t.Fatalf("CreateOrUpdateSession() update error = %v, want nil", err)
 	}
-	
+
 	retrieved, err := s.GetSession("agent-001", "task-001")
 	if err != nil {
 		t.Fatalf("GetSession() error = %v, want nil", err)
@@ -132,16 +132,16 @@ func TestStore_CreateOrUpdateSession(t *testing.T) {
 }
 
 func TestStore_GetSession(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	agent := &models.Agent{
 		AgentID:    "agent-001",
 		Registered: now,
 		LastSeen:   now,
 	}
 	s.CreateOrUpdateAgent(agent)
-	
+
 	session := &models.Session{
 		AgentID:      "agent-001",
 		SessionTopic: "task-001",
@@ -150,7 +150,7 @@ func TestStore_GetSession(t *testing.T) {
 		Expired:      false,
 	}
 	s.CreateOrUpdateSession(session)
-	
+
 	// Test existing session
 	retrieved, err := s.GetSession("agent-001", "task-001")
 	if err != nil {
@@ -159,13 +159,13 @@ func TestStore_GetSession(t *testing.T) {
 	if retrieved.SessionTopic != "task-001" {
 		t.Errorf("GetSession() session_topic = %v, want task-001", retrieved.SessionTopic)
 	}
-	
+
 	// Test non-existing session
 	_, err = s.GetSession("agent-001", "task-999")
 	if err != ErrNotFound {
 		t.Errorf("GetSession() error = %v, want ErrNotFound", err)
 	}
-	
+
 	// Test non-existing agent
 	_, err = s.GetSession("agent-999", "task-001")
 	if err != ErrNotFound {
@@ -174,16 +174,16 @@ func TestStore_GetSession(t *testing.T) {
 }
 
 func TestStore_ListSessions(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	agent := &models.Agent{
 		AgentID:    "agent-001",
 		Registered: now,
 		LastSeen:   now,
 	}
 	s.CreateOrUpdateAgent(agent)
-	
+
 	// Add multiple sessions
 	for i := 1; i <= 3; i++ {
 		session := &models.Session{
@@ -195,13 +195,13 @@ func TestStore_ListSessions(t *testing.T) {
 		}
 		s.CreateOrUpdateSession(session)
 	}
-	
+
 	// Test include expired
 	sessions := s.ListSessions("agent-001", true)
 	if len(sessions) != 3 {
 		t.Errorf("ListSessions(includeExpired=true) count = %v, want 3", len(sessions))
 	}
-	
+
 	// Test exclude expired
 	sessions = s.ListSessions("agent-001", false)
 	if len(sessions) != 2 {
@@ -210,9 +210,9 @@ func TestStore_ListSessions(t *testing.T) {
 }
 
 func TestStore_AddStatus(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	// Create agent and session first
 	agent := &models.Agent{
 		AgentID:    "agent-001",
@@ -220,7 +220,7 @@ func TestStore_AddStatus(t *testing.T) {
 		LastSeen:   now,
 	}
 	s.CreateOrUpdateAgent(agent)
-	
+
 	session := &models.Session{
 		AgentID:      "agent-001",
 		SessionTopic: "task-001",
@@ -229,7 +229,7 @@ func TestStore_AddStatus(t *testing.T) {
 		Expired:      false,
 	}
 	s.CreateOrUpdateSession(session)
-	
+
 	status := &models.AgentStatus{
 		AgentID:      "agent-001",
 		SessionTopic: "task-001",
@@ -237,12 +237,12 @@ func TestStore_AddStatus(t *testing.T) {
 		Timestamp:    now,
 		Message:      "Task started",
 	}
-	
+
 	err := s.AddStatus(status)
 	if err != nil {
 		t.Fatalf("AddStatus() error = %v, want nil", err)
 	}
-	
+
 	history, err := s.GetStatusHistory("agent-001", "task-001")
 	if err != nil {
 		t.Fatalf("GetStatusHistory() error = %v, want nil", err)
@@ -256,16 +256,16 @@ func TestStore_AddStatus(t *testing.T) {
 }
 
 func TestStore_GetStatusHistory(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	agent := &models.Agent{
 		AgentID:    "agent-001",
 		Registered: now,
 		LastSeen:   now,
 	}
 	s.CreateOrUpdateAgent(agent)
-	
+
 	session := &models.Session{
 		AgentID:      "agent-001",
 		SessionTopic: "task-001",
@@ -274,7 +274,7 @@ func TestStore_GetStatusHistory(t *testing.T) {
 		Expired:      false,
 	}
 	s.CreateOrUpdateSession(session)
-	
+
 	// Add multiple statuses
 	statuses := []*models.AgentStatus{
 		{
@@ -290,11 +290,11 @@ func TestStore_GetStatusHistory(t *testing.T) {
 			Timestamp:    now.Add(time.Hour),
 		},
 	}
-	
+
 	for _, status := range statuses {
 		s.AddStatus(status)
 	}
-	
+
 	history, err := s.GetStatusHistory("agent-001", "task-001")
 	if err != nil {
 		t.Fatalf("GetStatusHistory() error = %v, want nil", err)
@@ -305,16 +305,16 @@ func TestStore_GetStatusHistory(t *testing.T) {
 }
 
 func TestStore_GetLatestStatus(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	agent := &models.Agent{
 		AgentID:    "agent-001",
 		Registered: now,
 		LastSeen:   now,
 	}
 	s.CreateOrUpdateAgent(agent)
-	
+
 	session := &models.Session{
 		AgentID:      "agent-001",
 		SessionTopic: "task-001",
@@ -323,7 +323,7 @@ func TestStore_GetLatestStatus(t *testing.T) {
 		Expired:      false,
 	}
 	s.CreateOrUpdateSession(session)
-	
+
 	// Add statuses with different timestamps
 	s.AddStatus(&models.AgentStatus{
 		AgentID:      "agent-001",
@@ -331,14 +331,14 @@ func TestStore_GetLatestStatus(t *testing.T) {
 		Status:       "running",
 		Timestamp:    now,
 	})
-	
+
 	s.AddStatus(&models.AgentStatus{
 		AgentID:      "agent-001",
 		SessionTopic: "task-001",
 		Status:       "success",
 		Timestamp:    now.Add(time.Hour),
 	})
-	
+
 	latest, err := s.GetLatestStatus("agent-001", "task-001")
 	if err != nil {
 		t.Fatalf("GetLatestStatus() error = %v, want nil", err)
@@ -349,16 +349,16 @@ func TestStore_GetLatestStatus(t *testing.T) {
 }
 
 func TestStore_CheckExpiredSessions(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	agent := &models.Agent{
 		AgentID:    "agent-001",
 		Registered: now,
 		LastSeen:   now,
 	}
 	s.CreateOrUpdateAgent(agent)
-	
+
 	// Create expired session (last updated 1 hour ago, TTL 30 minutes)
 	expiredSession := &models.Session{
 		AgentID:      "agent-001",
@@ -369,7 +369,7 @@ func TestStore_CheckExpiredSessions(t *testing.T) {
 		TTLMinutes:   30,
 	}
 	s.CreateOrUpdateSession(expiredSession)
-	
+
 	// Create active session
 	activeSession := &models.Session{
 		AgentID:      "agent-001",
@@ -380,10 +380,10 @@ func TestStore_CheckExpiredSessions(t *testing.T) {
 		TTLMinutes:   30,
 	}
 	s.CreateOrUpdateSession(activeSession)
-	
+
 	// Check expired sessions
 	s.CheckExpiredSessions()
-	
+
 	// Verify expired session is marked
 	expired, _ := s.GetSession("agent-001", "task-expired")
 	if !expired.Expired {
@@ -392,7 +392,7 @@ func TestStore_CheckExpiredSessions(t *testing.T) {
 	if expired.ExpiredAt == nil {
 		t.Errorf("CheckExpiredSessions() expired_at not set")
 	}
-	
+
 	// Verify active session is not marked
 	active, _ := s.GetSession("agent-001", "task-active")
 	if active.Expired {
@@ -401,9 +401,9 @@ func TestStore_CheckExpiredSessions(t *testing.T) {
 }
 
 func TestStore_ConcurrentAccess(t *testing.T) {
-	s := NewStore()
+	s := NewMemoryStore()
 	now := time.Now()
-	
+
 	// Create agent
 	agent := &models.Agent{
 		AgentID:    "agent-001",
@@ -411,7 +411,7 @@ func TestStore_ConcurrentAccess(t *testing.T) {
 		LastSeen:   now,
 	}
 	s.CreateOrUpdateAgent(agent)
-	
+
 	// Concurrent writes
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
@@ -427,12 +427,12 @@ func TestStore_ConcurrentAccess(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	// Wait for all goroutines
 	for i := 0; i < 10; i++ {
 		<-done
 	}
-	
+
 	// Verify all sessions were created
 	sessions := s.ListSessions("agent-001", true)
 	if len(sessions) != 10 {

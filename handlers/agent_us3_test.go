@@ -13,8 +13,8 @@ import (
 	"github.com/kubeagents/kubeagents/store"
 )
 
-func setupTestStoreForUS3() *store.Store {
-	st := store.NewStore()
+func setupTestStoreForUS3() store.Store {
+	st := store.NewMemoryStore()
 	now := time.Now()
 
 	// Create agent
@@ -134,7 +134,7 @@ func TestAgentHandler_GetAgent(t *testing.T) {
 }
 
 func TestAgentHandler_GetAgentNotFound(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents/agent-999", nil)

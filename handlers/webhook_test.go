@@ -14,7 +14,7 @@ import (
 )
 
 func TestWebhookHandler_NewAgentAutoRegistration(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	now := time.Now()
@@ -52,7 +52,7 @@ func TestWebhookHandler_NewAgentAutoRegistration(t *testing.T) {
 }
 
 func TestWebhookHandler_ExistingAgentStatusUpdate(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	now := time.Now()
@@ -99,7 +99,7 @@ func TestWebhookHandler_ExistingAgentStatusUpdate(t *testing.T) {
 }
 
 func TestWebhookHandler_SessionAutoCreation(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	now := time.Now()
@@ -136,7 +136,7 @@ func TestWebhookHandler_SessionAutoCreation(t *testing.T) {
 }
 
 func TestWebhookHandler_SessionUpdateOnTaskEnd(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	now := time.Now()
@@ -199,7 +199,7 @@ func TestWebhookHandler_SessionUpdateOnTaskEnd(t *testing.T) {
 }
 
 func TestWebhookHandler_StatusHistoryRecording(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	now := time.Now()
@@ -232,7 +232,7 @@ func TestWebhookHandler_StatusHistoryRecording(t *testing.T) {
 }
 
 func TestWebhookHandler_InvalidStatusReportData(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	tests := []struct {
@@ -296,7 +296,7 @@ func TestWebhookHandler_InvalidStatusReportData(t *testing.T) {
 }
 
 func TestWebhookHandler_ConcurrentStatusReports(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	now := time.Now()
@@ -334,7 +334,7 @@ func TestWebhookHandler_ConcurrentStatusReports(t *testing.T) {
 }
 
 func TestWebhookHandler_ResponseTimeRequirement(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	now := time.Now()
@@ -361,7 +361,7 @@ func TestWebhookHandler_ResponseTimeRequirement(t *testing.T) {
 }
 
 func TestWebhookHandler_OptionalFields(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	now := time.Now()
@@ -413,7 +413,7 @@ func TestWebhookHandler_OptionalFields(t *testing.T) {
 }
 
 func TestWebhookHandler_SessionExpirationTimeConfiguration(t *testing.T) {
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
 	
 	now := time.Now()
@@ -464,7 +464,7 @@ func TestWebhookHandler_StatusTransitionNotification_RunningToSuccess(t *testing
 	defer server.Close()
 
 	// Create store and handler with notifier
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
 	handler := NewWebhookHandlerWithNotifier(st, nm)
 
@@ -560,7 +560,7 @@ func TestWebhookHandler_StatusTransitionNotification_RunningToFailed(t *testing.
 	}))
 	defer server.Close()
 
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
 	handler := NewWebhookHandlerWithNotifier(st, nm)
 
@@ -586,7 +586,7 @@ func TestWebhookHandler_NoNotificationForNonRunningTransition(t *testing.T) {
 	}))
 	defer server.Close()
 
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
 	handler := NewWebhookHandlerWithNotifier(st, nm)
 
@@ -620,7 +620,7 @@ func TestWebhookHandler_NotificationFailureDoesNotBlockResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
 	handler := NewWebhookHandlerWithNotifier(st, nm)
 
@@ -644,7 +644,7 @@ func TestWebhookHandler_NotificationFailureDoesNotBlockResponse(t *testing.T) {
 
 func TestWebhookHandler_NoNotificationWhenNotifierIsNil(t *testing.T) {
 	// Handler without notifier should work normally
-	st := store.NewStore()
+	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st) // No notifier
 
 	now := time.Now()

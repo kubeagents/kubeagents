@@ -13,11 +13,11 @@ import (
 
 // AgentHandler handles agent-related requests
 type AgentHandler struct {
-	store *store.Store
+	store store.Store
 }
 
 // NewAgentHandler creates a new agent handler
-func NewAgentHandler(s *store.Store) *AgentHandler {
+func NewAgentHandler(s store.Store) *AgentHandler {
 	return &AgentHandler{
 		store: s,
 	}
@@ -26,10 +26,10 @@ func NewAgentHandler(s *store.Store) *AgentHandler {
 // AgentWithStats represents an agent with session statistics
 type AgentWithStats struct {
 	*models.Agent
-	SessionCount      int    `json:"session_count"`
-	ActiveSessionCount int   `json:"active_session_count"`
-	LatestStatus      string `json:"latest_status,omitempty"`
-	LatestMessage     string `json:"latest_message,omitempty"`
+	SessionCount       int    `json:"session_count"`
+	ActiveSessionCount int    `json:"active_session_count"`
+	LatestStatus       string `json:"latest_status,omitempty"`
+	LatestMessage      string `json:"latest_message,omitempty"`
 }
 
 // ListAgents handles GET /api/agents
@@ -75,11 +75,11 @@ func (h *AgentHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 	for _, agent := range filteredAgents {
 		stats := h.calculateAgentStats(agent.AgentID)
 		agentsWithStats = append(agentsWithStats, &AgentWithStats{
-			Agent:             agent,
-			SessionCount:      stats.SessionCount,
+			Agent:              agent,
+			SessionCount:       stats.SessionCount,
 			ActiveSessionCount: stats.ActiveSessionCount,
-			LatestStatus:      stats.LatestStatus,
-			LatestMessage:     stats.LatestMessage,
+			LatestStatus:       stats.LatestStatus,
+			LatestMessage:      stats.LatestMessage,
 		})
 	}
 
@@ -94,10 +94,10 @@ func (h *AgentHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 
 // AgentStats represents session statistics for an agent
 type AgentStats struct {
-	SessionCount      int
+	SessionCount       int
 	ActiveSessionCount int
-	LatestStatus      string
-	LatestMessage     string
+	LatestStatus       string
+	LatestMessage      string
 }
 
 // calculateAgentStats calculates statistics for an agent
@@ -106,7 +106,7 @@ func (h *AgentHandler) calculateAgentStats(agentID string) AgentStats {
 	activeSessions := h.store.ListSessions(agentID, false)
 
 	stats := AgentStats{
-		SessionCount:      len(sessions),
+		SessionCount:       len(sessions),
 		ActiveSessionCount: len(activeSessions),
 	}
 
@@ -133,7 +133,7 @@ func (h *AgentHandler) calculateAgentStats(agentID string) AgentStats {
 // getAgentLatestStatus gets the latest status for an agent
 func (h *AgentHandler) getAgentLatestStatus(agentID string) (string, error) {
 	sessions := h.store.ListSessions(agentID, true)
-	
+
 	var latestStatus *models.AgentStatus
 	for _, session := range sessions {
 		status, err := h.store.GetLatestStatus(agentID, session.SessionTopic)
@@ -154,7 +154,7 @@ func (h *AgentHandler) getAgentLatestStatus(agentID string) (string, error) {
 // GetAgent handles GET /api/agents/{agent_id}
 func (h *AgentHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "agent_id")
-	
+
 	agent, err := h.store.GetAgent(agentID)
 	if err != nil {
 		h.respondError(w, http.StatusNotFound, "not_found", "Agent not found")
@@ -163,7 +163,7 @@ func (h *AgentHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Calculate statistics for the agent
 	stats := h.calculateAgentStats(agentID)
-	
+
 	// Create response with stats
 	agentWithStats := AgentWithStats{
 		Agent:              agent,
@@ -187,7 +187,7 @@ type SessionWithStatus struct {
 // ListSessions handles GET /api/agents/{agent_id}/sessions
 func (h *AgentHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "agent_id")
-	
+
 	// Check if agent exists
 	_, err := h.store.GetAgent(agentID)
 	if err != nil {
@@ -197,7 +197,7 @@ func (h *AgentHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 
 	// Get expired parameter
 	includeExpired := r.URL.Query().Get("expired") != "false"
-	
+
 	sessions := h.store.ListSessions(agentID, includeExpired)
 
 	// Enrich sessions with current status
@@ -206,13 +206,13 @@ func (h *AgentHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		sessionWithStatus := SessionWithStatus{
 			Session: session,
 		}
-		
+
 		// Get latest status for this session
 		latestStatus, err := h.store.GetLatestStatus(agentID, session.SessionTopic)
 		if err == nil && latestStatus != nil {
 			sessionWithStatus.CurrentStatus = &latestStatus.Status
 		}
-		
+
 		sessionsWithStatus = append(sessionsWithStatus, sessionWithStatus)
 	}
 
@@ -229,7 +229,7 @@ func (h *AgentHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 func (h *AgentHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "agent_id")
 	sessionTopic := chi.URLParam(r, "session_topic")
-	
+
 	session, err := h.store.GetSession(agentID, sessionTopic)
 	if err != nil {
 		h.respondError(w, http.StatusNotFound, "not_found", "Session not found")
@@ -238,14 +238,14 @@ func (h *AgentHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 
 	// Get status history
 	history, _ := h.store.GetStatusHistory(agentID, sessionTopic)
-	
+
 	// Sort by timestamp descending (newest first)
 	sort.Slice(history, func(i, j int) bool {
 		return history[i].Timestamp.After(history[j].Timestamp)
 	})
 
 	response := map[string]interface{}{
-		"session":       session,
+		"session":        session,
 		"status_history": history,
 	}
 
@@ -257,7 +257,7 @@ func (h *AgentHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 // GetAgentStatus handles GET /api/agents/{agent_id}/status
 func (h *AgentHandler) GetAgentStatus(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "agent_id")
-	
+
 	// Check if agent exists
 	_, err := h.store.GetAgent(agentID)
 	if err != nil {
@@ -268,7 +268,7 @@ func (h *AgentHandler) GetAgentStatus(w http.ResponseWriter, r *http.Request) {
 	// Get latest status across all sessions
 	sessions := h.store.ListSessions(agentID, true)
 	var latestStatus *models.AgentStatus
-	
+
 	for _, session := range sessions {
 		status, err := h.store.GetLatestStatus(agentID, session.SessionTopic)
 		if err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -22,8 +23,48 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 
-	// Initialize store
-	st := store.NewStore()
+	// Initialize store (PostgreSQL if configured, otherwise memory)
+	var st store.Store
+	var pgStore *store.PostgresStore
+	var closeDB func()
+
+	if cfg.Database.DBName != "" {
+		// Use PostgreSQL
+		connString := fmt.Sprintf(
+			"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+			cfg.Database.Host,
+			cfg.Database.Port,
+			cfg.Database.User,
+			cfg.Database.Password,
+			cfg.Database.DBName,
+			cfg.Database.SSLMode,
+		)
+
+		var err error
+		pgStore, err = store.NewPostgresStore(context.Background(), connString)
+		if err != nil {
+			log.Fatalf("Failed to connect to database: %v", err)
+		}
+
+		// Run database migrations
+		conn, err := pgStore.Pool().Acquire(context.Background())
+		if err != nil {
+			log.Fatalf("Failed to acquire database connection: %v", err)
+		}
+		defer conn.Release()
+
+		if err := store.RunMigrations(context.Background(), conn.Conn()); err != nil {
+			log.Fatalf("Failed to run migrations: %v", err)
+		}
+
+		st = pgStore
+		closeDB = func() { pgStore.Close() }
+		log.Println("Using PostgreSQL storage")
+	} else {
+		// Use memory storage
+		st = store.NewMemoryStore()
+		log.Println("Using in-memory storage")
+	}
 
 	// Initialize notification manager
 	notificationManager := notifier.NewNotificationManager(
@@ -35,14 +76,14 @@ func main() {
 	healthHandler := handlers.HealthCheck
 	webhookHandler := handlers.NewWebhookHandlerWithNotifier(st, notificationManager)
 	agentHandler := handlers.NewAgentHandler(st)
-	
+
 	// Setup router
 	r := chi.NewRouter()
-	
+
 	// Middleware
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	
+
 	// CORS
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSAllowedOrigins,
@@ -52,11 +93,11 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
-	
+
 	// Routes
 	r.Get("/health", healthHandler)
 	r.Post("/webhook/status", webhookHandler.ServeHTTP)
-	
+
 	// API routes
 	r.Route("/api/agents", func(r chi.Router) {
 		r.Get("/", agentHandler.ListAgents)
@@ -65,15 +106,15 @@ func main() {
 		r.Get("/{agent_id}/sessions/{session_topic}", agentHandler.GetSession)
 		r.Get("/{agent_id}/status", agentHandler.GetAgentStatus)
 	})
-	
+
 	// Start background goroutine for session expiration check
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ticker.C:
@@ -83,13 +124,13 @@ func main() {
 			}
 		}
 	}()
-	
+
 	// Start server
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: r,
 	}
-	
+
 	// Graceful shutdown
 	go func() {
 		log.Printf("Server starting on port %s", cfg.Port)
@@ -97,12 +138,12 @@ func main() {
 			log.Fatalf("Server failed: %v", err)
 		}
 	}()
-	
+
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	
+
 	log.Println("Shutting down server...")
 	cancel()
 
@@ -120,6 +161,10 @@ func main() {
 
 	if err := srv.Shutdown(ctxShutdown); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	if closeDB != nil {
+		closeDB()
 	}
 
 	log.Println("Server exited")

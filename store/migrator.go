@@ -28,7 +28,8 @@ func LoadMigrations() ([]Migration, error) {
 		return nil, fmt.Errorf("failed to read migrations directory: %w", err)
 	}
 
-	var migrations []Migration
+	migrationMap := make(map[string]*Migration)
+
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
 			continue
@@ -49,17 +50,10 @@ func LoadMigrations() ([]Migration, error) {
 		}
 
 		// Find or create migration for this version
-		var m *Migration
-		for i := range migrations {
-			if migrations[i].Version == version {
-				m = &migrations[i]
-				break
-			}
-		}
-
-		if m == nil {
+		m, exists := migrationMap[version]
+		if !exists {
 			m = &Migration{Version: version}
-			migrations = append(migrations, *m)
+			migrationMap[version] = m
 		}
 
 		if direction == "up" {
@@ -67,6 +61,12 @@ func LoadMigrations() ([]Migration, error) {
 		} else {
 			m.DownSQL = string(content)
 		}
+	}
+
+	// Convert map to slice
+	var migrations []Migration
+	for _, m := range migrationMap {
+		migrations = append(migrations, *m)
 	}
 
 	// Sort migrations by version
@@ -78,29 +78,44 @@ func LoadMigrations() ([]Migration, error) {
 }
 
 // parseMigrationFilename parses migration filename and returns [version, direction]
-// Example: "000001_init.up.sql" -> ["000001_init", "up"]
+// Example: "000001_init.up.sql" -> ["000001", "up"]
 func parseMigrationFilename(filename string) []string {
-	ext := filepath.Ext(filename)
-	base := filename[:len(filename)-len(ext)]
-	parts := filepath.Base(base)
+	// Remove .sql extension
+	if filepath.Ext(filename) != ".sql" {
+		return nil
+	}
+	base := filename[:len(filename)-4] // remove ".sql"
 
-	// Split by last underscore
-	lastUnderscore := -1
-	for i := len(parts) - 1; i >= 0; i-- {
-		if parts[i] == '_' {
-			lastUnderscore = i
+	// Find direction (.up or .down)
+	var direction string
+	var versionName string
+
+	if len(base) > 3 && base[len(base)-3:] == ".up" {
+		direction = "up"
+		versionName = base[:len(base)-3]
+	} else if len(base) > 5 && base[len(base)-5:] == ".down" {
+		direction = "down"
+		versionName = base[:len(base)-5]
+	} else {
+		return nil
+	}
+
+	// Extract version number (first part before underscore)
+	firstUnderscore := -1
+	for i := 0; i < len(versionName); i++ {
+		if versionName[i] == '_' {
+			firstUnderscore = i
 			break
 		}
 	}
 
-	if lastUnderscore == -1 {
+	if firstUnderscore == -1 {
 		return nil
 	}
 
-	return []string{
-		parts[:lastUnderscore],
-		parts[lastUnderscore+1:],
-	}
+	version := versionName[:firstUnderscore]
+
+	return []string{version, direction}
 }
 
 // RunMigrations runs all pending migrations

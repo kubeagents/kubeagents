@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,13 +9,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kubeagents/kubeagents/auth"
+	"github.com/kubeagents/kubeagents/middleware"
 	"github.com/kubeagents/kubeagents/models"
 	"github.com/kubeagents/kubeagents/store"
 )
 
+const testUserID = "test-user-123"
+const testUserEmail = "test@example.com"
+
+// setupTestStoreWithAgents creates a test store with a test user and agents
 func setupTestStoreWithAgents() store.Store {
 	st := store.NewMemoryStore()
 	now := time.Now()
+
+	// Create test user
+	user := &models.User{
+		ID:       testUserID,
+		Email:    testUserEmail,
+		Name:     "Test User",
+		PasswordHash: "dummy-hash",
+		EmailVerified: true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	st.CreateUser(user)
 
 	// Create agents with sessions
 	for i := 1; i <= 3; i++ {
@@ -22,6 +41,7 @@ func setupTestStoreWithAgents() store.Store {
 		agentName := fmt.Sprintf("Agent %d", i)
 		agent := &models.Agent{
 			AgentID:    agentID,
+			UserID:     testUserID, // Associate with test user
 			Name:       agentName,
 			Source:     "test-software",
 			Registered: now,
@@ -55,11 +75,22 @@ func setupTestStoreWithAgents() store.Store {
 	return st
 }
 
+// addTestUserToContext adds a test user to the request context
+func addTestUserToContext(r *http.Request) *http.Request {
+	claims := &auth.AccessTokenClaims{
+		UserID: testUserID,
+		Email:  testUserEmail,
+	}
+	ctx := context.WithValue(r.Context(), middleware.UserContextKey, claims)
+	return r.WithContext(ctx)
+}
+
 func TestAgentHandler_ListAgents(t *testing.T) {
 	st := setupTestStoreWithAgents()
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents", nil)
+	req = addTestUserToContext(req)
 	rr := httptest.NewRecorder()
 
 	handler.ListAgents(rr, req)
@@ -86,6 +117,7 @@ func TestAgentHandler_ListAgentsWithStatusFilter(t *testing.T) {
 
 	// Test with status filter
 	req := httptest.NewRequest("GET", "/api/agents?status=running", nil)
+	req = addTestUserToContext(req)
 	rr := httptest.NewRecorder()
 
 	handler.ListAgents(rr, req)
@@ -113,6 +145,7 @@ func TestAgentHandler_ListAgentsWithSearch(t *testing.T) {
 
 	// Test with search parameter (search by agent ID)
 	req := httptest.NewRequest("GET", "/api/agents?search=agent-001", nil)
+	req = addTestUserToContext(req)
 	rr := httptest.NewRecorder()
 
 	handler.ListAgents(rr, req)
@@ -139,6 +172,7 @@ func TestAgentHandler_ListAgentsWithSessionStatistics(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents", nil)
+	req = addTestUserToContext(req)
 	rr := httptest.NewRecorder()
 
 	handler.ListAgents(rr, req)
@@ -171,6 +205,7 @@ func TestAgentHandler_ListAgentsResponseTime(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents", nil)
+	req = addTestUserToContext(req)
 	rr := httptest.NewRecorder()
 
 	start := time.Now()
@@ -187,6 +222,7 @@ func TestAgentHandler_ListAgentsEmpty(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents", nil)
+	req = addTestUserToContext(req)
 	rr := httptest.NewRecorder()
 
 	handler.ListAgents(rr, req)

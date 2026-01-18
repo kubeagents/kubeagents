@@ -8,6 +8,7 @@ import (
 // Agent represents an external AI Agent system
 type Agent struct {
 	AgentID    string    `json:"agent_id"`
+	UserID     string    `json:"user_id,omitempty"` // Owner user ID for data isolation
 	Name       string    `json:"name,omitempty"`
 	Source     string    `json:"source,omitempty"`
 	Registered time.Time `json:"registered"`

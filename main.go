@@ -13,8 +13,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/kubeagents/kubeagents/auth"
 	"github.com/kubeagents/kubeagents/config"
+	"github.com/kubeagents/kubeagents/email"
 	"github.com/kubeagents/kubeagents/handlers"
+	authMiddleware "github.com/kubeagents/kubeagents/middleware"
 	"github.com/kubeagents/kubeagents/notifier"
 	"github.com/kubeagents/kubeagents/store"
 )
@@ -72,10 +75,33 @@ func main() {
 		cfg.NotificationTimeout,
 	)
 
+	// Initialize JWT service
+	jwtService := auth.NewJWTService(cfg.JWT.Secret, cfg.JWT.AccessTokenExpiry, cfg.JWT.RefreshTokenExpiry)
+
+	// Initialize email service (optional - will be nil if SMTP not configured)
+	var emailService *email.EmailService
+	if cfg.SMTP.Host != "" && cfg.SMTP.User != "" {
+		emailService = email.NewEmailService(email.EmailConfig{
+			SMTPHost:   cfg.SMTP.Host,
+			SMTPPort:   cfg.SMTP.Port,
+			SMTPUser:   cfg.SMTP.User,
+			SMTPPass:   cfg.SMTP.Password,
+			FromEmail:  cfg.SMTP.FromEmail,
+			AppBaseURL: cfg.AppBaseURL,
+		})
+		log.Println("Email service initialized")
+	} else {
+		log.Println("Warning: SMTP not configured, email verification disabled")
+	}
+
+	// Initialize auth middleware
+	authMiddleware := authMiddleware.NewAuthMiddleware(jwtService)
+
 	// Initialize handlers
 	healthHandler := handlers.HealthCheck
 	webhookHandler := handlers.NewWebhookHandlerWithNotifier(st, notificationManager)
 	agentHandler := handlers.NewAgentHandler(st)
+	authHandler := handlers.NewAuthHandler(st, jwtService, emailService)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -94,17 +120,37 @@ func main() {
 		MaxAge:           300,
 	}))
 
-	// Routes
+	// Public routes
 	r.Get("/health", healthHandler)
-	r.Post("/webhook/status", webhookHandler.ServeHTTP)
 
-	// API routes
-	r.Route("/api/agents", func(r chi.Router) {
-		r.Get("/", agentHandler.ListAgents)
-		r.Get("/{agent_id}", agentHandler.GetAgent)
-		r.Get("/{agent_id}/sessions", agentHandler.ListSessions)
-		r.Get("/{agent_id}/sessions/{session_topic}", agentHandler.GetSession)
-		r.Get("/{agent_id}/status", agentHandler.GetAgentStatus)
+	// Auth routes (public)
+	r.Route("/api/auth", func(r chi.Router) {
+		r.Post("/register", authHandler.Register)
+		r.Get("/verify", authHandler.VerifyEmail)
+		r.Post("/login", authHandler.Login)
+		r.Post("/refresh", authHandler.Refresh)
+		r.Post("/resend-verify", authHandler.ResendVerify)
+	})
+
+	// Protected API routes
+	r.Route("/api", func(r chi.Router) {
+		r.Use(authMiddleware.RequireAuth)
+		r.Post("/auth/logout", authHandler.Logout)
+		r.Get("/auth/me", authHandler.Me)
+
+		r.Route("/agents", func(r chi.Router) {
+			r.Get("/", agentHandler.ListAgents)
+			r.Get("/{agent_id}", agentHandler.GetAgent)
+			r.Get("/{agent_id}/sessions", agentHandler.ListSessions)
+			r.Get("/{agent_id}/sessions/{session_topic}", agentHandler.GetSession)
+			r.Get("/{agent_id}/status", agentHandler.GetAgentStatus)
+		})
+	})
+
+	// Webhook requires authentication (Agent binds to user)
+	r.Route("/webhook", func(r chi.Router) {
+		r.Use(authMiddleware.RequireAuth)
+		r.Post("/status", webhookHandler.ServeHTTP)
 	})
 
 	// Start background goroutine for session expiration check

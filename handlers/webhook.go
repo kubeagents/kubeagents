@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kubeagents/kubeagents/internal"
+	"github.com/kubeagents/kubeagents/middleware"
 	"github.com/kubeagents/kubeagents/models"
 	"github.com/kubeagents/kubeagents/notifier"
 	"github.com/kubeagents/kubeagents/store"
@@ -54,6 +55,13 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get authenticated user (webhook requires authentication)
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		h.respondError(w, http.StatusUnauthorized, "unauthorized", "Not authenticated")
+		return
+	}
+
 	// Parse request body
 	var statusReport internal.StatusReport
 	if err := json.NewDecoder(r.Body).Decode(&statusReport); err != nil {
@@ -67,8 +75,8 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Process status report
-	if err := h.processStatusReport(&statusReport); err != nil {
+	// Process status report with user context
+	if err := h.processStatusReport(&statusReport, claims.UserID); err != nil {
 		log.Printf("Error processing status report: %v", err)
 		h.respondError(w, http.StatusInternalServerError, "internal_error", "Failed to process status report")
 		return
@@ -79,7 +87,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // processStatusReport processes a status report and updates the store
-func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport) error {
+func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport, userID string) error {
 	now := time.Now()
 
 	// Get previous status for transition detection
@@ -109,16 +117,22 @@ func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport) error {
 	// Create or update agent
 	agent, err := h.store.GetAgent(sr.AgentID)
 	if err != nil {
-		// Agent doesn't exist, create new one
+		// Agent doesn't exist, create new one with user association
 		agent = &models.Agent{
 			AgentID:    sr.AgentID,
+			UserID:     userID, // Associate with authenticated user
 			Name:       sr.AgentName,
 			Source:     sr.AgentSource,
 			Registered: now,
 			LastSeen:   now,
 		}
 	} else {
-		// Agent exists, update it
+		// Agent exists, verify it belongs to the user
+		if agent.UserID != userID {
+			// Agent exists but belongs to a different user - reject
+			return store.ErrNotFound
+		}
+		// Agent exists and belongs to user, update it
 		if sr.AgentName != "" {
 			agent.Name = sr.AgentName
 		}

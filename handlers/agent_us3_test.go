@@ -9,17 +9,45 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kubeagents/kubeagents/auth"
+	"github.com/kubeagents/kubeagents/middleware"
 	"github.com/kubeagents/kubeagents/models"
 	"github.com/kubeagents/kubeagents/store"
 )
+
+const testUserIDUS3 = "test-user-123"
+const testUserEmailUS3 = "test@example.com"
+
+// addTestUserToContextUS3 adds a test user to the request context
+func addTestUserToContextUS3(r *http.Request) *http.Request {
+	claims := &auth.AccessTokenClaims{
+		UserID: testUserIDUS3,
+		Email:  testUserEmailUS3,
+	}
+	ctx := context.WithValue(r.Context(), middleware.UserContextKey, claims)
+	return r.WithContext(ctx)
+}
 
 func setupTestStoreForUS3() store.Store {
 	st := store.NewMemoryStore()
 	now := time.Now()
 
+	// Create test user
+	user := &models.User{
+		ID:       testUserIDUS3,
+		Email:    testUserEmailUS3,
+		Name:     "Test User",
+		PasswordHash: "dummy-hash",
+		EmailVerified: true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	st.CreateUser(user)
+
 	// Create agent
 	agent := &models.Agent{
 		AgentID:    "agent-001",
+		UserID:     testUserIDUS3, // Associate with test user
 		Name:       "Test Agent",
 		Source:     "test-software",
 		Registered: now,
@@ -78,6 +106,7 @@ func TestAgentHandler_GetAgent(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents/agent-001", nil)
+	req = addTestUserToContextUS3(req)
 	rr := httptest.NewRecorder()
 
 	// Set up chi context with route parameter
@@ -138,6 +167,7 @@ func TestAgentHandler_GetAgentNotFound(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents/agent-999", nil)
+	req = addTestUserToContextUS3(req)
 	rr := httptest.NewRecorder()
 
 	rctx := chi.NewRouteContext()
@@ -165,6 +195,7 @@ func TestAgentHandler_ListSessions(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents/agent-001/sessions", nil)
+	req = addTestUserToContextUS3(req)
 	rr := httptest.NewRecorder()
 
 	rctx := chi.NewRouteContext()
@@ -215,6 +246,7 @@ func TestAgentHandler_ListSessionsWithExpiredFilter(t *testing.T) {
 
 	// Test excluding expired sessions
 	req := httptest.NewRequest("GET", "/api/agents/agent-001/sessions?expired=false", nil)
+	req = addTestUserToContextUS3(req)
 	rr := httptest.NewRecorder()
 
 	rctx := chi.NewRouteContext()
@@ -255,6 +287,7 @@ func TestAgentHandler_GetSession(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents/agent-001/sessions/task-001", nil)
+	req = addTestUserToContextUS3(req)
 	rr := httptest.NewRecorder()
 
 	rctx := chi.NewRouteContext()
@@ -290,6 +323,7 @@ func TestAgentHandler_GetSessionNotFound(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents/agent-001/sessions/task-999", nil)
+	req = addTestUserToContextUS3(req)
 	rr := httptest.NewRecorder()
 
 	rctx := chi.NewRouteContext()
@@ -309,6 +343,7 @@ func TestAgentHandler_GetAgentStatus(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents/agent-001/status", nil)
+	req = addTestUserToContextUS3(req)
 	rr := httptest.NewRecorder()
 
 	rctx := chi.NewRouteContext()
@@ -336,6 +371,7 @@ func TestAgentHandler_GetAgentDetailResponseTime(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents/agent-001", nil)
+	req = addTestUserToContextUS3(req)
 	rr := httptest.NewRecorder()
 
 	rctx := chi.NewRouteContext()
@@ -356,6 +392,7 @@ func TestAgentHandler_StatusHistoryOrdering(t *testing.T) {
 	handler := NewAgentHandler(st)
 
 	req := httptest.NewRequest("GET", "/api/agents/agent-001/sessions/task-002", nil)
+	req = addTestUserToContextUS3(req)
 	rr := httptest.NewRecorder()
 
 	rctx := chi.NewRouteContext()

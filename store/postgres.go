@@ -46,16 +46,18 @@ func (s *PostgresStore) CreateOrUpdateAgent(agent *models.Agent) error {
 	defer cancel()
 
 	query := `
-		INSERT INTO agents (agent_id, name, source, registered, last_seen)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO agents (agent_id, user_id, name, source, registered, last_seen)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (agent_id) DO UPDATE
 		SET name = EXCLUDED.name,
 		    source = EXCLUDED.source,
-		    last_seen = EXCLUDED.last_seen
+		    last_seen = EXCLUDED.last_seen,
+		    user_id = COALESCE(agents.user_id, EXCLUDED.user_id)
 	`
 
 	_, err := s.pool.Exec(ctx, query,
 		agent.AgentID,
+		agent.UserID,
 		agent.Name,
 		agent.Source,
 		agent.Registered,
@@ -75,7 +77,7 @@ func (s *PostgresStore) GetAgent(agentID string) (*models.Agent, error) {
 	defer cancel()
 
 	query := `
-		SELECT agent_id, name, source, registered, last_seen
+		SELECT agent_id, COALESCE(user_id, ''), name, source, registered, last_seen
 		FROM agents
 		WHERE agent_id = $1
 	`
@@ -85,6 +87,7 @@ func (s *PostgresStore) GetAgent(agentID string) (*models.Agent, error) {
 	var agent models.Agent
 	err := row.Scan(
 		&agent.AgentID,
+		&agent.UserID,
 		&agent.Name,
 		&agent.Source,
 		&agent.Registered,
@@ -107,7 +110,7 @@ func (s *PostgresStore) ListAgents() []*models.Agent {
 	defer cancel()
 
 	query := `
-		SELECT agent_id, name, source, registered, last_seen
+		SELECT agent_id, COALESCE(user_id, ''), name, source, registered, last_seen
 		FROM agents
 		ORDER BY last_seen DESC
 	`
@@ -123,6 +126,44 @@ func (s *PostgresStore) ListAgents() []*models.Agent {
 		var agent models.Agent
 		if err := rows.Scan(
 			&agent.AgentID,
+			&agent.UserID,
+			&agent.Name,
+			&agent.Source,
+			&agent.Registered,
+			&agent.LastSeen,
+		); err != nil {
+			continue
+		}
+		agents = append(agents, &agent)
+	}
+
+	return agents
+}
+
+// ListAgentsByUser returns all agents belonging to a specific user
+func (s *PostgresStore) ListAgentsByUser(userID string) []*models.Agent {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT agent_id, COALESCE(user_id, ''), name, source, registered, last_seen
+		FROM agents
+		WHERE user_id = $1
+		ORDER BY last_seen DESC
+	`
+
+	rows, err := s.pool.Query(ctx, query, userID)
+	if err != nil {
+		return []*models.Agent{}
+	}
+	defer rows.Close()
+
+	var agents []*models.Agent
+	for rows.Next() {
+		var agent models.Agent
+		if err := rows.Scan(
+			&agent.AgentID,
+			&agent.UserID,
 			&agent.Name,
 			&agent.Source,
 			&agent.Registered,
@@ -371,4 +412,296 @@ func (s *PostgresStore) CheckExpiredSessions() {
 	if err != nil {
 		return
 	}
+}
+
+// CreateUser creates a new user
+func (s *PostgresStore) CreateUser(user *models.User) error {
+	if err := user.Validate(); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		INSERT INTO users (id, email, password_hash, name, email_verified, verify_token, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`
+
+	_, err := s.pool.Exec(ctx, query,
+		user.ID,
+		user.Email,
+		user.PasswordHash,
+		user.Name,
+		user.EmailVerified,
+		user.VerifyToken,
+		user.CreatedAt,
+		user.UpdatedAt,
+	)
+
+	if err != nil {
+		// Check for unique constraint violation
+		if isDuplicateKeyError(err) {
+			return ErrDuplicateEmail
+		}
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
+	return nil
+}
+
+// GetUserByID retrieves a user by ID
+func (s *PostgresStore) GetUserByID(userID string) (*models.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT id, email, password_hash, COALESCE(name, ''), email_verified, COALESCE(verify_token, ''), created_at, updated_at
+		FROM users
+		WHERE id = $1
+	`
+
+	row := s.pool.QueryRow(ctx, query, userID)
+
+	var user models.User
+	err := row.Scan(
+		&user.ID,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Name,
+		&user.EmailVerified,
+		&user.VerifyToken,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	return &user, nil
+}
+
+// GetUserByEmail retrieves a user by email
+func (s *PostgresStore) GetUserByEmail(email string) (*models.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT id, email, password_hash, COALESCE(name, ''), email_verified, COALESCE(verify_token, ''), created_at, updated_at
+		FROM users
+		WHERE email = $1
+	`
+
+	row := s.pool.QueryRow(ctx, query, email)
+
+	var user models.User
+	err := row.Scan(
+		&user.ID,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Name,
+		&user.EmailVerified,
+		&user.VerifyToken,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
+	}
+
+	return &user, nil
+}
+
+// GetUserByVerifyToken retrieves a user by verification token
+func (s *PostgresStore) GetUserByVerifyToken(token string) (*models.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT id, email, password_hash, COALESCE(name, ''), email_verified, COALESCE(verify_token, ''), created_at, updated_at
+		FROM users
+		WHERE verify_token = $1
+	`
+
+	row := s.pool.QueryRow(ctx, query, token)
+
+	var user models.User
+	err := row.Scan(
+		&user.ID,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Name,
+		&user.EmailVerified,
+		&user.VerifyToken,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by verify token: %w", err)
+	}
+
+	return &user, nil
+}
+
+// UpdateUser updates an existing user
+func (s *PostgresStore) UpdateUser(user *models.User) error {
+	if err := user.Validate(); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		UPDATE users
+		SET email = $2, password_hash = $3, name = $4, email_verified = $5, verify_token = $6, updated_at = $7
+		WHERE id = $1
+	`
+
+	result, err := s.pool.Exec(ctx, query,
+		user.ID,
+		user.Email,
+		user.PasswordHash,
+		user.Name,
+		user.EmailVerified,
+		user.VerifyToken,
+		user.UpdatedAt,
+	)
+
+	if err != nil {
+		if isDuplicateKeyError(err) {
+			return ErrDuplicateEmail
+		}
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// SaveRefreshToken saves a refresh token
+func (s *PostgresStore) SaveRefreshToken(token *models.RefreshToken) error {
+	if err := token.Validate(); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at, revoked)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`
+
+	_, err := s.pool.Exec(ctx, query,
+		token.ID,
+		token.UserID,
+		token.TokenHash,
+		token.ExpiresAt,
+		token.CreatedAt,
+		token.Revoked,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to save refresh token: %w", err)
+	}
+
+	return nil
+}
+
+// GetRefreshToken retrieves a refresh token by hash
+func (s *PostgresStore) GetRefreshToken(tokenHash string) (*models.RefreshToken, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT id, user_id, token_hash, expires_at, created_at, revoked
+		FROM refresh_tokens
+		WHERE token_hash = $1
+	`
+
+	row := s.pool.QueryRow(ctx, query, tokenHash)
+
+	var token models.RefreshToken
+	err := row.Scan(
+		&token.ID,
+		&token.UserID,
+		&token.TokenHash,
+		&token.ExpiresAt,
+		&token.CreatedAt,
+		&token.Revoked,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get refresh token: %w", err)
+	}
+
+	return &token, nil
+}
+
+// RevokeRefreshToken revokes a refresh token
+func (s *PostgresStore) RevokeRefreshToken(tokenHash string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		UPDATE refresh_tokens
+		SET revoked = true
+		WHERE token_hash = $1
+	`
+
+	result, err := s.pool.Exec(ctx, query, tokenHash)
+	if err != nil {
+		return fmt.Errorf("failed to revoke refresh token: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// RevokeAllUserTokens revokes all refresh tokens for a user
+func (s *PostgresStore) RevokeAllUserTokens(userID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		UPDATE refresh_tokens
+		SET revoked = true
+		WHERE user_id = $1
+	`
+
+	_, err := s.pool.Exec(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke user tokens: %w", err)
+	}
+
+	return nil
+}
+
+// isDuplicateKeyError checks if the error is a duplicate key violation
+func isDuplicateKeyError(err error) bool {
+	// PostgreSQL unique violation error code is 23505
+	return err != nil && (err.Error() == "ERROR: duplicate key value violates unique constraint" ||
+		(len(err.Error()) > 0 && err.Error()[:5] == "ERROR"))
 }

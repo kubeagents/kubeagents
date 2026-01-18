@@ -5,10 +5,24 @@ import "github.com/kubeagents/kubeagents/models"
 // Store defines the interface for data storage implementations
 // Different storage backends (memory, postgres, etc.) can implement this interface
 type Store interface {
+	// User operations
+	CreateUser(user *models.User) error
+	GetUserByID(userID string) (*models.User, error)
+	GetUserByEmail(email string) (*models.User, error)
+	GetUserByVerifyToken(token string) (*models.User, error)
+	UpdateUser(user *models.User) error
+
+	// Refresh token operations
+	SaveRefreshToken(token *models.RefreshToken) error
+	GetRefreshToken(tokenHash string) (*models.RefreshToken, error)
+	RevokeRefreshToken(tokenHash string) error
+	RevokeAllUserTokens(userID string) error
+
 	// Agent operations
 	CreateOrUpdateAgent(agent *models.Agent) error
 	GetAgent(agentID string) (*models.Agent, error)
 	ListAgents() []*models.Agent
+	ListAgentsByUser(userID string) []*models.Agent
 
 	// Session operations
 	CreateOrUpdateSession(session *models.Session) error

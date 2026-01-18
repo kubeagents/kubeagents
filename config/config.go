@@ -20,6 +20,22 @@ type DatabaseConfig struct {
 	ConnMaxLifetime time.Duration
 }
 
+// JWTConfig holds JWT configuration
+type JWTConfig struct {
+	Secret             string
+	AccessTokenExpiry  time.Duration
+	RefreshTokenExpiry time.Duration
+}
+
+// SMTPConfig holds SMTP configuration
+type SMTPConfig struct {
+	Host      string
+	Port      int
+	User      string
+	Password  string
+	FromEmail string
+}
+
 // Config holds application configuration
 type Config struct {
 	Port                   string
@@ -27,6 +43,9 @@ type Config struct {
 	NotificationWebhookURL string
 	NotificationTimeout    time.Duration
 	Database               DatabaseConfig
+	JWT                    JWTConfig
+	SMTP                   SMTPConfig
+	AppBaseURL             string
 }
 
 // Load loads configuration from environment variables with defaults
@@ -70,12 +89,33 @@ func Load() *Config {
 		ConnMaxLifetime: getEnvAsDuration("DB_CONN_MAX_LIFETIME", "5m"),
 	}
 
+	// JWT configuration
+	jwtConfig := JWTConfig{
+		Secret:             getEnv("JWT_SECRET", "default-secret-change-in-production"),
+		AccessTokenExpiry:  getEnvAsDuration("JWT_ACCESS_TOKEN_EXPIRY", "15m"),
+		RefreshTokenExpiry: getEnvAsDuration("JWT_REFRESH_TOKEN_EXPIRY", "168h"), // 7 days
+	}
+
+	// SMTP configuration
+	smtpConfig := SMTPConfig{
+		Host:      getEnv("SMTP_HOST", ""),
+		Port:      getEnvAsInt("SMTP_PORT", 587),
+		User:      getEnv("SMTP_USER", ""),
+		Password:  getEnv("SMTP_PASSWORD", ""),
+		FromEmail: getEnv("SMTP_FROM", ""),
+	}
+
+	appBaseURL := getEnv("APP_BASE_URL", "http://localhost:5173")
+
 	return &Config{
 		Port:                   port,
 		CORSAllowedOrigins:     origins,
 		NotificationWebhookURL: notificationWebhookURL,
 		NotificationTimeout:    notificationTimeout,
 		Database:               dbConfig,
+		JWT:                    jwtConfig,
+		SMTP:                   smtpConfig,
+		AppBaseURL:             appBaseURL,
 	}
 }
 

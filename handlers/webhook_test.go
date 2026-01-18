@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,29 +10,45 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kubeagents/kubeagents/auth"
+	"github.com/kubeagents/kubeagents/middleware"
 	"github.com/kubeagents/kubeagents/notifier"
 	"github.com/kubeagents/kubeagents/store"
 )
 
+const testUserIDWebhook = "test-user-123"
+const testUserEmailWebhook = "test@example.com"
+
+// addTestUserToContextWebhook adds a test user to the request context
+func addTestUserToContextWebhook(r *http.Request) *http.Request {
+	claims := &auth.AccessTokenClaims{
+		UserID: testUserIDWebhook,
+		Email:  testUserEmailWebhook,
+	}
+	ctx := context.WithValue(r.Context(), middleware.UserContextKey, claims)
+	return r.WithContext(ctx)
+}
+
 func TestWebhookHandler_NewAgentAutoRegistration(t *testing.T) {
 	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
-	
+
 	now := time.Now()
 	reqBody := map[string]interface{}{
 		"agent_id":      "agent-001",
 		"agent_name":    "Test Agent",
 		"agent_source":  "test-software",
 		"session_topic": "task-001",
-		"status":         "running",
-		"timestamp":      now.Format(time.RFC3339),
+		"status":        "running",
+		"timestamp":     now.Format(time.RFC3339),
 	}
-	
+
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
-	
+
 	handler.ServeHTTP(rr, req)
 	
 	if status := rr.Code; status != http.StatusOK {
@@ -54,34 +71,36 @@ func TestWebhookHandler_NewAgentAutoRegistration(t *testing.T) {
 func TestWebhookHandler_ExistingAgentStatusUpdate(t *testing.T) {
 	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
-	
+
 	now := time.Now()
-	
+
 	// First request - create agent
 	reqBody1 := map[string]interface{}{
 		"agent_id":      "agent-001",
 		"agent_name":    "Test Agent",
 		"session_topic": "task-001",
-		"status":         "running",
-		"timestamp":      now.Format(time.RFC3339),
+		"status":        "running",
+		"timestamp":     now.Format(time.RFC3339),
 	}
 	body1, _ := json.Marshal(reqBody1)
 	req1 := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body1))
 	req1.Header.Set("Content-Type", "application/json")
+	req1 = addTestUserToContextWebhook(req1)
 	rr1 := httptest.NewRecorder()
 	handler.ServeHTTP(rr1, req1)
-	
+
 	// Second request - update agent
 	reqBody2 := map[string]interface{}{
 		"agent_id":      "agent-001",
 		"agent_name":    "Updated Agent",
 		"session_topic": "task-002",
-		"status":         "running",
-		"timestamp":      now.Add(time.Hour).Format(time.RFC3339),
+		"status":        "running",
+		"timestamp":     now.Add(time.Hour).Format(time.RFC3339),
 	}
 	body2, _ := json.Marshal(reqBody2)
 	req2 := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body2))
 	req2.Header.Set("Content-Type", "application/json")
+	req2 = addTestUserToContextWebhook(req2)
 	rr2 := httptest.NewRecorder()
 	handler.ServeHTTP(rr2, req2)
 	
@@ -101,21 +120,22 @@ func TestWebhookHandler_ExistingAgentStatusUpdate(t *testing.T) {
 func TestWebhookHandler_SessionAutoCreation(t *testing.T) {
 	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
-	
+
 	now := time.Now()
 	reqBody := map[string]interface{}{
 		"agent_id":      "agent-001",
 		"agent_name":    "Test Agent",
 		"session_topic": "task-001",
-		"status":         "running",
-		"timestamp":      now.Format(time.RFC3339),
+		"status":        "running",
+		"timestamp":     now.Format(time.RFC3339),
 	}
-	
+
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
-	
+
 	handler.ServeHTTP(rr, req)
 	
 	if status := rr.Code; status != http.StatusOK {
@@ -138,34 +158,36 @@ func TestWebhookHandler_SessionAutoCreation(t *testing.T) {
 func TestWebhookHandler_SessionUpdateOnTaskEnd(t *testing.T) {
 	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
-	
+
 	now := time.Now()
-	
+
 	// First request - create session with running status
 	reqBody1 := map[string]interface{}{
 		"agent_id":      "agent-001",
 		"agent_name":    "Test Agent",
 		"session_topic": "task-001",
-		"status":         "running",
-		"timestamp":      now.Format(time.RFC3339),
+		"status":        "running",
+		"timestamp":     now.Format(time.RFC3339),
 	}
 	body1, _ := json.Marshal(reqBody1)
 	req1 := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body1))
 	req1.Header.Set("Content-Type", "application/json")
+	req1 = addTestUserToContextWebhook(req1)
 	rr1 := httptest.NewRecorder()
 	handler.ServeHTTP(rr1, req1)
-	
+
 	// Second request - update session with success status
 	reqBody2 := map[string]interface{}{
 		"agent_id":      "agent-001",
 		"session_topic": "task-001",
-		"status":         "success",
-		"timestamp":      now.Add(time.Hour).Format(time.RFC3339),
-		"message":        "Task completed",
+		"status":        "success",
+		"timestamp":     now.Add(time.Hour).Format(time.RFC3339),
+		"message":       "Task completed",
 	}
 	body2, _ := json.Marshal(reqBody2)
 	req2 := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body2))
 	req2.Header.Set("Content-Type", "application/json")
+	req2 = addTestUserToContextWebhook(req2)
 	rr2 := httptest.NewRecorder()
 	handler.ServeHTTP(rr2, req2)
 	
@@ -201,9 +223,9 @@ func TestWebhookHandler_SessionUpdateOnTaskEnd(t *testing.T) {
 func TestWebhookHandler_StatusHistoryRecording(t *testing.T) {
 	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
-	
+
 	now := time.Now()
-	
+
 	// Send multiple status reports
 	statuses := []string{"running", "running", "success"}
 	for i, status := range statuses {
@@ -211,12 +233,13 @@ func TestWebhookHandler_StatusHistoryRecording(t *testing.T) {
 			"agent_id":      "agent-001",
 			"agent_name":    "Test Agent",
 			"session_topic": "task-001",
-			"status":         status,
-			"timestamp":      now.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
+			"status":        status,
+			"timestamp":     now.Add(time.Duration(i) * time.Minute).Format(time.RFC3339),
 		}
 		body, _ := json.Marshal(reqBody)
 		req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req = addTestUserToContextWebhook(req)
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
 	}
@@ -284,8 +307,9 @@ func TestWebhookHandler_InvalidStatusReportData(t *testing.T) {
 			body, _ := json.Marshal(tt.reqBody)
 			req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
+			req = addTestUserToContextWebhook(req)
 			rr := httptest.NewRecorder()
-			
+
 			handler.ServeHTTP(rr, req)
 			
 			if status := rr.Code; status != tt.wantStatus {
@@ -309,12 +333,13 @@ func TestWebhookHandler_ConcurrentStatusReports(t *testing.T) {
 				"agent_id":      "agent-001",
 				"agent_name":    "Test Agent",
 				"session_topic": "task-" + string(rune('0'+id)),
-				"status":         "running",
-				"timestamp":      now.Format(time.RFC3339),
+				"status":        "running",
+				"timestamp":     now.Format(time.RFC3339),
 			}
 			body, _ := json.Marshal(reqBody)
 			req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
+			req = addTestUserToContextWebhook(req)
 			rr := httptest.NewRecorder()
 			handler.ServeHTTP(rr, req)
 			done <- true
@@ -336,19 +361,20 @@ func TestWebhookHandler_ConcurrentStatusReports(t *testing.T) {
 func TestWebhookHandler_ResponseTimeRequirement(t *testing.T) {
 	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
-	
+
 	now := time.Now()
 	reqBody := map[string]interface{}{
 		"agent_id":      "agent-001",
 		"agent_name":    "Test Agent",
 		"session_topic": "task-001",
-		"status":         "running",
-		"timestamp":      now.Format(time.RFC3339),
+		"status":        "running",
+		"timestamp":     now.Format(time.RFC3339),
 	}
-	
+
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
 	
 	start := time.Now()
@@ -363,22 +389,23 @@ func TestWebhookHandler_ResponseTimeRequirement(t *testing.T) {
 func TestWebhookHandler_OptionalFields(t *testing.T) {
 	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
-	
+
 	now := time.Now()
 	reqBody := map[string]interface{}{
 		"agent_id":      "agent-001",
 		"agent_name":    "Test Agent",
 		"session_topic": "task-001",
-		"status":         "running",
-		"timestamp":      now.Format(time.RFC3339),
-		"message":        "Optional message",
-		"content":        "Optional content",
-		"ttl_minutes":    60,
+		"status":        "running",
+		"timestamp":     now.Format(time.RFC3339),
+		"message":       "Optional message",
+		"content":       "Optional content",
+		"ttl_minutes":   60,
 	}
-	
+
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
 	
 	handler.ServeHTTP(rr, req)
@@ -415,22 +442,23 @@ func TestWebhookHandler_OptionalFields(t *testing.T) {
 func TestWebhookHandler_SessionExpirationTimeConfiguration(t *testing.T) {
 	st := store.NewMemoryStore()
 	handler := NewWebhookHandler(st)
-	
+
 	now := time.Now()
-	
+
 	// Create session with custom TTL
 	reqBody := map[string]interface{}{
 		"agent_id":      "agent-001",
 		"agent_name":    "Test Agent",
 		"session_topic": "task-001",
-		"status":         "running",
-		"timestamp":      now.Format(time.RFC3339),
-		"ttl_minutes":    120,
+		"status":        "running",
+		"timestamp":     now.Format(time.RFC3339),
+		"ttl_minutes":   120,
 	}
-	
+
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
 	
 	handler.ServeHTTP(rr, req)
@@ -481,6 +509,7 @@ func TestWebhookHandler_StatusTransitionNotification_RunningToSuccess(t *testing
 	body1, _ := json.Marshal(reqBody1)
 	req1 := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body1))
 	req1.Header.Set("Content-Type", "application/json")
+	req1 = addTestUserToContextWebhook(req1)
 	rr1 := httptest.NewRecorder()
 	handler.ServeHTTP(rr1, req1)
 
@@ -506,6 +535,7 @@ func TestWebhookHandler_StatusTransitionNotification_RunningToSuccess(t *testing
 	body2, _ := json.Marshal(reqBody2)
 	req2 := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body2))
 	req2.Header.Set("Content-Type", "application/json")
+	req2 = addTestUserToContextWebhook(req2)
 	rr2 := httptest.NewRecorder()
 
 	start := time.Now()
@@ -682,6 +712,7 @@ func sendStatus(t *testing.T, handler *WebhookHandler, agentID, sessionTopic, st
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -709,6 +740,7 @@ func sendStatusWithResult(t *testing.T, handler *WebhookHandler, agentID, sessio
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/webhook/status", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 

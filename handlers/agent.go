@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kubeagents/kubeagents/middleware"
 	"github.com/kubeagents/kubeagents/models"
 	"github.com/kubeagents/kubeagents/store"
 )
@@ -39,12 +40,19 @@ func (h *AgentHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get authenticated user
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		h.respondError(w, http.StatusUnauthorized, "unauthorized", "Not authenticated")
+		return
+	}
+
 	// Get query parameters
 	statusFilter := r.URL.Query().Get("status")
 	searchQuery := r.URL.Query().Get("search")
 
-	// Get all agents
-	agents := h.store.ListAgents()
+	// Get agents for the authenticated user only
+	agents := h.store.ListAgentsByUser(claims.UserID)
 
 	// Filter and search
 	var filteredAgents []*models.Agent
@@ -153,11 +161,24 @@ func (h *AgentHandler) getAgentLatestStatus(agentID string) (string, error) {
 
 // GetAgent handles GET /api/agents/{agent_id}
 func (h *AgentHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
+	// Get authenticated user
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		h.respondError(w, http.StatusUnauthorized, "unauthorized", "Not authenticated")
+		return
+	}
+
 	agentID := chi.URLParam(r, "agent_id")
 
 	agent, err := h.store.GetAgent(agentID)
 	if err != nil {
 		h.respondError(w, http.StatusNotFound, "not_found", "Agent not found")
+		return
+	}
+
+	// Verify the agent belongs to the authenticated user
+	if agent.UserID != claims.UserID {
+		h.respondError(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
@@ -186,12 +207,24 @@ type SessionWithStatus struct {
 
 // ListSessions handles GET /api/agents/{agent_id}/sessions
 func (h *AgentHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
+	// Get authenticated user
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		h.respondError(w, http.StatusUnauthorized, "unauthorized", "Not authenticated")
+		return
+	}
+
 	agentID := chi.URLParam(r, "agent_id")
 
-	// Check if agent exists
-	_, err := h.store.GetAgent(agentID)
+	// Check if agent exists and belongs to user
+	agent, err := h.store.GetAgent(agentID)
 	if err != nil {
 		h.respondError(w, http.StatusNotFound, "not_found", "Agent not found")
+		return
+	}
+
+	if agent.UserID != claims.UserID {
+		h.respondError(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
@@ -227,8 +260,27 @@ func (h *AgentHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 
 // GetSession handles GET /api/agents/{agent_id}/sessions/{session_topic}
 func (h *AgentHandler) GetSession(w http.ResponseWriter, r *http.Request) {
+	// Get authenticated user
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		h.respondError(w, http.StatusUnauthorized, "unauthorized", "Not authenticated")
+		return
+	}
+
 	agentID := chi.URLParam(r, "agent_id")
 	sessionTopic := chi.URLParam(r, "session_topic")
+
+	// Check if agent exists and belongs to user
+	agent, err := h.store.GetAgent(agentID)
+	if err != nil {
+		h.respondError(w, http.StatusNotFound, "not_found", "Agent not found")
+		return
+	}
+
+	if agent.UserID != claims.UserID {
+		h.respondError(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
 
 	session, err := h.store.GetSession(agentID, sessionTopic)
 	if err != nil {
@@ -256,12 +308,24 @@ func (h *AgentHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 
 // GetAgentStatus handles GET /api/agents/{agent_id}/status
 func (h *AgentHandler) GetAgentStatus(w http.ResponseWriter, r *http.Request) {
+	// Get authenticated user
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		h.respondError(w, http.StatusUnauthorized, "unauthorized", "Not authenticated")
+		return
+	}
+
 	agentID := chi.URLParam(r, "agent_id")
 
-	// Check if agent exists
-	_, err := h.store.GetAgent(agentID)
+	// Check if agent exists and belongs to user
+	agent, err := h.store.GetAgent(agentID)
 	if err != nil {
 		h.respondError(w, http.StatusNotFound, "not_found", "Agent not found")
+		return
+	}
+
+	if agent.UserID != claims.UserID {
+		h.respondError(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 

@@ -9,18 +9,24 @@ import (
 
 // MemoryStore is a thread-safe in-memory store for agents, sessions, and statuses
 type MemoryStore struct {
-	mu       sync.RWMutex
-	agents   map[string]*models.Agent
-	sessions map[string]map[string]*models.Session       // agent_id -> session_topic
-	statuses map[string]map[string][]*models.AgentStatus // agent_id -> session_topic -> history
+	mu            sync.RWMutex
+	agents        map[string]*models.Agent
+	sessions      map[string]map[string]*models.Session       // agent_id -> session_topic
+	statuses      map[string]map[string][]*models.AgentStatus // agent_id -> session_topic -> history
+	users         map[string]*models.User                     // user_id -> user
+	usersByEmail  map[string]*models.User                     // email -> user
+	refreshTokens map[string]*models.RefreshToken             // token_hash -> token
 }
 
 // NewMemoryStore creates a new memory store
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		agents:   make(map[string]*models.Agent),
-		sessions: make(map[string]map[string]*models.Session),
-		statuses: make(map[string]map[string][]*models.AgentStatus),
+		agents:        make(map[string]*models.Agent),
+		sessions:      make(map[string]map[string]*models.Session),
+		statuses:      make(map[string]map[string][]*models.AgentStatus),
+		users:         make(map[string]*models.User),
+		usersByEmail:  make(map[string]*models.User),
+		refreshTokens: make(map[string]*models.RefreshToken),
 	}
 }
 
@@ -217,4 +223,153 @@ func (s *MemoryStore) CheckExpiredSessions() {
 			}
 		}
 	}
+}
+
+// ListAgentsByUser returns all agents belonging to a specific user
+func (s *MemoryStore) ListAgentsByUser(userID string) []*models.Agent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	agents := make([]*models.Agent, 0)
+	for _, agent := range s.agents {
+		if agent.UserID == userID {
+			agents = append(agents, agent)
+		}
+	}
+	return agents
+}
+
+// CreateUser creates a new user
+func (s *MemoryStore) CreateUser(user *models.User) error {
+	if err := user.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check if email already exists
+	if _, exists := s.usersByEmail[user.Email]; exists {
+		return ErrDuplicateEmail
+	}
+
+	s.users[user.ID] = user
+	s.usersByEmail[user.Email] = user
+	return nil
+}
+
+// GetUserByID retrieves a user by ID
+func (s *MemoryStore) GetUserByID(userID string) (*models.User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	user, exists := s.users[userID]
+	if !exists {
+		return nil, ErrNotFound
+	}
+	return user, nil
+}
+
+// GetUserByEmail retrieves a user by email
+func (s *MemoryStore) GetUserByEmail(email string) (*models.User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	user, exists := s.usersByEmail[email]
+	if !exists {
+		return nil, ErrNotFound
+	}
+	return user, nil
+}
+
+// GetUserByVerifyToken retrieves a user by verification token
+func (s *MemoryStore) GetUserByVerifyToken(token string) (*models.User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, user := range s.users {
+		if user.VerifyToken == token {
+			return user, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+// UpdateUser updates an existing user
+func (s *MemoryStore) UpdateUser(user *models.User) error {
+	if err := user.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existingUser, exists := s.users[user.ID]
+	if !exists {
+		return ErrNotFound
+	}
+
+	// If email changed, update email index
+	if existingUser.Email != user.Email {
+		// Check if new email already exists
+		if _, exists := s.usersByEmail[user.Email]; exists {
+			return ErrDuplicateEmail
+		}
+		delete(s.usersByEmail, existingUser.Email)
+		s.usersByEmail[user.Email] = user
+	}
+
+	s.users[user.ID] = user
+	return nil
+}
+
+// SaveRefreshToken saves a refresh token
+func (s *MemoryStore) SaveRefreshToken(token *models.RefreshToken) error {
+	if err := token.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.refreshTokens[token.TokenHash] = token
+	return nil
+}
+
+// GetRefreshToken retrieves a refresh token by hash
+func (s *MemoryStore) GetRefreshToken(tokenHash string) (*models.RefreshToken, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	token, exists := s.refreshTokens[tokenHash]
+	if !exists {
+		return nil, ErrNotFound
+	}
+	return token, nil
+}
+
+// RevokeRefreshToken revokes a refresh token
+func (s *MemoryStore) RevokeRefreshToken(tokenHash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	token, exists := s.refreshTokens[tokenHash]
+	if !exists {
+		return ErrNotFound
+	}
+	token.Revoked = true
+	return nil
+}
+
+// RevokeAllUserTokens revokes all refresh tokens for a user
+func (s *MemoryStore) RevokeAllUserTokens(userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, token := range s.refreshTokens {
+		if token.UserID == userID {
+			token.Revoked = true
+		}
+	}
+	return nil
 }

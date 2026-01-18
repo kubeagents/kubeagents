@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,6 +23,52 @@ import (
 	"github.com/kubeagents/kubeagents/notifier"
 	"github.com/kubeagents/kubeagents/store"
 )
+
+const jwtSecretConfigKey = "jwt_secret"
+
+// initJWTSecret initializes the JWT secret from config or storage
+// If config has a secret, use it and save to storage
+// If config doesn't have a secret, try to load from storage, or generate a new one
+func initJWTSecret(st store.Store, configSecret string) (string, error) {
+	// If config has a secret set, use it and save to storage
+	if configSecret != "" {
+		if err := st.SetConfig(jwtSecretConfigKey, configSecret); err != nil {
+			return "", fmt.Errorf("failed to save JWT secret to storage: %w", err)
+		}
+		log.Println("Using JWT secret from configuration")
+		return configSecret, nil
+	}
+
+	// Try to load from storage
+	secret, err := st.GetConfig(jwtSecretConfigKey)
+	if err == nil && secret != "" {
+		log.Println("Using JWT secret from storage")
+		return secret, nil
+	}
+
+	// Generate a new secret
+	secret, err = generateRandomSecret(32)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate JWT secret: %w", err)
+	}
+
+	// Save to storage
+	if err := st.SetConfig(jwtSecretConfigKey, secret); err != nil {
+		return "", fmt.Errorf("failed to save generated JWT secret: %w", err)
+	}
+
+	log.Println("Generated and saved new JWT secret")
+	return secret, nil
+}
+
+// generateRandomSecret generates a cryptographically secure random string
+func generateRandomSecret(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(bytes), nil
+}
 
 func main() {
 	// Load configuration
@@ -75,8 +123,14 @@ func main() {
 		cfg.NotificationTimeout,
 	)
 
+	// Initialize JWT secret from config or storage
+	jwtSecret, err := initJWTSecret(st, cfg.JWT.Secret)
+	if err != nil {
+		log.Fatalf("Failed to initialize JWT secret: %v", err)
+	}
+
 	// Initialize JWT service
-	jwtService := auth.NewJWTService(cfg.JWT.Secret, cfg.JWT.AccessTokenExpiry, cfg.JWT.RefreshTokenExpiry)
+	jwtService := auth.NewJWTService(jwtSecret, cfg.JWT.AccessTokenExpiry, cfg.JWT.RefreshTokenExpiry)
 
 	// Initialize email service (optional - will be nil if SMTP not configured)
 	var emailService *email.EmailService
@@ -94,14 +148,15 @@ func main() {
 		log.Println("Warning: SMTP not configured, email verification disabled")
 	}
 
-	// Initialize auth middleware
-	authMiddleware := authMiddleware.NewAuthMiddleware(jwtService)
+	// Initialize auth middleware (with store for API key support)
+	authMiddleware := authMiddleware.NewAuthMiddlewareWithStore(jwtService, st)
 
 	// Initialize handlers
 	healthHandler := handlers.HealthCheck
 	webhookHandler := handlers.NewWebhookHandlerWithNotifier(st, notificationManager)
 	agentHandler := handlers.NewAgentHandler(st)
 	authHandler := handlers.NewAuthHandler(st, jwtService, emailService)
+	apiKeyHandler := handlers.NewAPIKeyHandler(st)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -132,11 +187,18 @@ func main() {
 		r.Post("/resend-verify", authHandler.ResendVerify)
 	})
 
-	// Protected API routes
+	// Protected API routes (JWT only)
 	r.Route("/api", func(r chi.Router) {
 		r.Use(authMiddleware.RequireAuth)
 		r.Post("/auth/logout", authHandler.Logout)
 		r.Get("/auth/me", authHandler.Me)
+
+		// API Key management
+		r.Route("/apikeys", func(r chi.Router) {
+			r.Get("/", apiKeyHandler.List)
+			r.Post("/", apiKeyHandler.Create)
+			r.Delete("/{id}", apiKeyHandler.Revoke)
+		})
 
 		r.Route("/agents", func(r chi.Router) {
 			r.Get("/", agentHandler.ListAgents)
@@ -147,9 +209,9 @@ func main() {
 		})
 	})
 
-	// Webhook requires authentication (Agent binds to user)
+	// Webhook requires authentication (supports both JWT and API Key)
 	r.Route("/webhook", func(r chi.Router) {
-		r.Use(authMiddleware.RequireAuth)
+		r.Use(authMiddleware.RequireAuthOrAPIKey)
 		r.Post("/status", webhookHandler.ServeHTTP)
 	})
 

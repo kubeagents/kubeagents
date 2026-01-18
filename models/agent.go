@@ -40,13 +40,13 @@ func (a *Agent) Validate() error {
 
 // Session represents a task (task equals Session)
 type Session struct {
-	AgentID     string    `json:"agent_id"`
-	SessionTopic string   `json:"session_topic"`
-	Created     time.Time `json:"created"`
-	LastUpdated time.Time `json:"last_updated"`
-	Expired     bool      `json:"expired"`
-	ExpiredAt   *time.Time `json:"expired_at,omitempty"`
-	TTLMinutes  int       `json:"ttl_minutes,omitempty"`
+	AgentID      string     `json:"agent_id"`
+	SessionTopic string     `json:"session_topic"`
+	Created      time.Time  `json:"created"`
+	LastUpdated  time.Time  `json:"last_updated"`
+	Expired      bool       `json:"expired"`
+	ExpiredAt    *time.Time `json:"expired_at,omitempty"`
+	TTLMinutes   int        `json:"ttl_minutes,omitempty"`
 }
 
 // Validate validates Session fields

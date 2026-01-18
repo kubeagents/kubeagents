@@ -699,6 +699,232 @@ func (s *PostgresStore) RevokeAllUserTokens(userID string) error {
 	return nil
 }
 
+// CreateAPIKey creates a new API key
+func (s *PostgresStore) CreateAPIKey(apiKey *models.APIKey) error {
+	if err := apiKey.Validate(); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, expires_at, last_used_at, created_at, revoked)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+
+	_, err := s.pool.Exec(ctx, query,
+		apiKey.ID,
+		apiKey.UserID,
+		apiKey.Name,
+		apiKey.KeyHash,
+		apiKey.KeyPrefix,
+		apiKey.ExpiresAt,
+		apiKey.LastUsedAt,
+		apiKey.CreatedAt,
+		apiKey.Revoked,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to create API key: %w", err)
+	}
+
+	return nil
+}
+
+// GetAPIKeyByHash retrieves an API key by its hash
+func (s *PostgresStore) GetAPIKeyByHash(keyHash string) (*models.APIKey, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT id, user_id, name, key_hash, key_prefix, expires_at, last_used_at, created_at, revoked
+		FROM api_keys
+		WHERE key_hash = $1
+	`
+
+	row := s.pool.QueryRow(ctx, query, keyHash)
+
+	var apiKey models.APIKey
+	err := row.Scan(
+		&apiKey.ID,
+		&apiKey.UserID,
+		&apiKey.Name,
+		&apiKey.KeyHash,
+		&apiKey.KeyPrefix,
+		&apiKey.ExpiresAt,
+		&apiKey.LastUsedAt,
+		&apiKey.CreatedAt,
+		&apiKey.Revoked,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get API key: %w", err)
+	}
+
+	return &apiKey, nil
+}
+
+// GetAPIKeyByID retrieves an API key by its ID
+func (s *PostgresStore) GetAPIKeyByID(keyID string) (*models.APIKey, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT id, user_id, name, key_hash, key_prefix, expires_at, last_used_at, created_at, revoked
+		FROM api_keys
+		WHERE id = $1
+	`
+
+	row := s.pool.QueryRow(ctx, query, keyID)
+
+	var apiKey models.APIKey
+	err := row.Scan(
+		&apiKey.ID,
+		&apiKey.UserID,
+		&apiKey.Name,
+		&apiKey.KeyHash,
+		&apiKey.KeyPrefix,
+		&apiKey.ExpiresAt,
+		&apiKey.LastUsedAt,
+		&apiKey.CreatedAt,
+		&apiKey.Revoked,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get API key: %w", err)
+	}
+
+	return &apiKey, nil
+}
+
+// ListAPIKeysByUser returns all API keys for a user
+func (s *PostgresStore) ListAPIKeysByUser(userID string) ([]*models.APIKey, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT id, user_id, name, key_hash, key_prefix, expires_at, last_used_at, created_at, revoked
+		FROM api_keys
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list API keys: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []*models.APIKey
+	for rows.Next() {
+		var apiKey models.APIKey
+		if err := rows.Scan(
+			&apiKey.ID,
+			&apiKey.UserID,
+			&apiKey.Name,
+			&apiKey.KeyHash,
+			&apiKey.KeyPrefix,
+			&apiKey.ExpiresAt,
+			&apiKey.LastUsedAt,
+			&apiKey.CreatedAt,
+			&apiKey.Revoked,
+		); err != nil {
+			continue
+		}
+		keys = append(keys, &apiKey)
+	}
+
+	return keys, nil
+}
+
+// RevokeAPIKey revokes an API key
+func (s *PostgresStore) RevokeAPIKey(keyID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		UPDATE api_keys
+		SET revoked = true
+		WHERE id = $1
+	`
+
+	result, err := s.pool.Exec(ctx, query, keyID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke API key: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// UpdateAPIKeyLastUsed updates the last used timestamp of an API key
+func (s *PostgresStore) UpdateAPIKeyLastUsed(keyID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		UPDATE api_keys
+		SET last_used_at = $2
+		WHERE id = $1
+	`
+
+	_, err := s.pool.Exec(ctx, query, keyID, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to update API key last used: %w", err)
+	}
+
+	return nil
+}
+
+// GetConfig retrieves a config value by key
+func (s *PostgresStore) GetConfig(key string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT value FROM system_config WHERE key = $1`
+
+	var value string
+	err := s.pool.QueryRow(ctx, query, key).Scan(&value)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", ErrNotFound
+		}
+		return "", fmt.Errorf("failed to get config: %w", err)
+	}
+
+	return value, nil
+}
+
+// SetConfig sets a config value (upsert)
+func (s *PostgresStore) SetConfig(key, value string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		INSERT INTO system_config (key, value, updated_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (key) DO UPDATE
+		SET value = EXCLUDED.value, updated_at = NOW()
+	`
+
+	_, err := s.pool.Exec(ctx, query, key, value)
+	if err != nil {
+		return fmt.Errorf("failed to set config: %w", err)
+	}
+
+	return nil
+}
+
 // isDuplicateKeyError checks if the error is a duplicate key violation
 func isDuplicateKeyError(err error) bool {
 	// PostgreSQL unique violation error code is 23505

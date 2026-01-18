@@ -11,7 +11,7 @@ import (
 
 func TestAuthMiddleware_RequireAuth(t *testing.T) {
 	jwtService := auth.NewJWTService("test-secret-key-at-least-32-chars", 15*time.Minute, 7*24*time.Hour)
-	middleware := NewAuthMiddleware(jwtService)
+	middleware := NewAuthMiddlewareWithStore(jwtService, nil)
 
 	// Generate a valid token
 	validToken, _ := jwtService.GenerateAccessToken("user-123", "test@example.com")
@@ -96,7 +96,7 @@ func TestAuthMiddleware_RequireAuth(t *testing.T) {
 func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 	// Create service with very short expiry
 	jwtService := auth.NewJWTService("test-secret-key-at-least-32-chars", 1*time.Millisecond, 7*24*time.Hour)
-	middleware := NewAuthMiddleware(jwtService)
+	middleware := NewAuthMiddlewareWithStore(jwtService, nil)
 
 	token, _ := jwtService.GenerateAccessToken("user-123", "test@example.com")
 

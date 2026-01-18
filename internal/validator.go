@@ -28,11 +28,11 @@ func (sr *StatusReport) UnmarshalJSON(data []byte) error {
 	}{
 		Alias: (*Alias)(sr),
 	}
-	
+
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	
+
 	// Parse timestamp
 	if aux.Timestamp != "" {
 		t, err := time.Parse(time.RFC3339, aux.Timestamp)
@@ -41,7 +41,7 @@ func (sr *StatusReport) UnmarshalJSON(data []byte) error {
 		}
 		sr.Timestamp = t
 	}
-	
+
 	return nil
 }
 
@@ -65,7 +65,7 @@ func (sr *StatusReport) Validate() error {
 	if len(sr.SessionTopic) > 500 {
 		return errors.New("session_topic must be 1-500 characters")
 	}
-	
+
 	validStatuses := map[string]bool{
 		"running": true,
 		"success": true,
@@ -75,33 +75,21 @@ func (sr *StatusReport) Validate() error {
 	if !validStatuses[sr.Status] {
 		return errors.New("status must be one of: running, success, failed, pending")
 	}
-	
+
 	if sr.Timestamp.IsZero() {
 		return errors.New("timestamp is required")
 	}
-	
+
 	if len(sr.Message) > 1000 {
 		return errors.New("message must be 0-1000 characters")
 	}
 	if len(sr.Content) > 10000 {
 		return errors.New("content must be 0-10000 characters")
 	}
-	
+
 	if sr.TTLMinutes < 0 || (sr.TTLMinutes > 0 && (sr.TTLMinutes < 1 || sr.TTLMinutes > 1440)) {
 		return errors.New("ttl_minutes must be 0 or 1-1440")
 	}
-	
-	return nil
-}
 
-// ParseStatusReport parses JSON into StatusReport
-func ParseStatusReport(data []byte) (*StatusReport, error) {
-	var sr StatusReport
-	if err := json.Unmarshal(data, &sr); err != nil {
-		return nil, err
-	}
-	if err := sr.Validate(); err != nil {
-		return nil, err
-	}
-	return &sr, nil
+	return nil
 }

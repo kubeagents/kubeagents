@@ -16,6 +16,9 @@ type MemoryStore struct {
 	users         map[string]*models.User                     // user_id -> user
 	usersByEmail  map[string]*models.User                     // email -> user
 	refreshTokens map[string]*models.RefreshToken             // token_hash -> token
+	apiKeys       map[string]*models.APIKey                   // key_id -> api_key
+	apiKeysByHash map[string]*models.APIKey                   // key_hash -> api_key
+	config        map[string]string                           // key -> value
 }
 
 // NewMemoryStore creates a new memory store
@@ -27,6 +30,9 @@ func NewMemoryStore() *MemoryStore {
 		users:         make(map[string]*models.User),
 		usersByEmail:  make(map[string]*models.User),
 		refreshTokens: make(map[string]*models.RefreshToken),
+		apiKeys:       make(map[string]*models.APIKey),
+		apiKeysByHash: make(map[string]*models.APIKey),
+		config:        make(map[string]string),
 	}
 }
 
@@ -371,5 +377,105 @@ func (s *MemoryStore) RevokeAllUserTokens(userID string) error {
 			token.Revoked = true
 		}
 	}
+	return nil
+}
+
+// CreateAPIKey creates a new API key
+func (s *MemoryStore) CreateAPIKey(apiKey *models.APIKey) error {
+	if err := apiKey.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.apiKeys[apiKey.ID] = apiKey
+	s.apiKeysByHash[apiKey.KeyHash] = apiKey
+	return nil
+}
+
+// GetAPIKeyByHash retrieves an API key by its hash
+func (s *MemoryStore) GetAPIKeyByHash(keyHash string) (*models.APIKey, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	apiKey, exists := s.apiKeysByHash[keyHash]
+	if !exists {
+		return nil, ErrNotFound
+	}
+	return apiKey, nil
+}
+
+// GetAPIKeyByID retrieves an API key by its ID
+func (s *MemoryStore) GetAPIKeyByID(keyID string) (*models.APIKey, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	apiKey, exists := s.apiKeys[keyID]
+	if !exists {
+		return nil, ErrNotFound
+	}
+	return apiKey, nil
+}
+
+// ListAPIKeysByUser returns all API keys for a user
+func (s *MemoryStore) ListAPIKeysByUser(userID string) ([]*models.APIKey, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	keys := make([]*models.APIKey, 0)
+	for _, apiKey := range s.apiKeys {
+		if apiKey.UserID == userID {
+			keys = append(keys, apiKey)
+		}
+	}
+	return keys, nil
+}
+
+// RevokeAPIKey revokes an API key
+func (s *MemoryStore) RevokeAPIKey(keyID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	apiKey, exists := s.apiKeys[keyID]
+	if !exists {
+		return ErrNotFound
+	}
+	apiKey.Revoked = true
+	return nil
+}
+
+// UpdateAPIKeyLastUsed updates the last used timestamp of an API key
+func (s *MemoryStore) UpdateAPIKeyLastUsed(keyID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	apiKey, exists := s.apiKeys[keyID]
+	if !exists {
+		return ErrNotFound
+	}
+	now := time.Now()
+	apiKey.LastUsedAt = &now
+	return nil
+}
+
+// GetConfig retrieves a config value by key
+func (s *MemoryStore) GetConfig(key string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	value, exists := s.config[key]
+	if !exists {
+		return "", ErrNotFound
+	}
+	return value, nil
+}
+
+// SetConfig sets a config value
+func (s *MemoryStore) SetConfig(key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.config[key] = value
 	return nil
 }

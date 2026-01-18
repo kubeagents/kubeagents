@@ -31,7 +31,7 @@ func addTestUserToContextWebhook(r *http.Request) *http.Request {
 
 func TestWebhookHandler_NewAgentAutoRegistration(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
+	handler := NewWebhookHandlerWithNotifier(st, nil)
 
 	now := time.Now()
 	reqBody := map[string]interface{}{
@@ -50,11 +50,11 @@ func TestWebhookHandler_NewAgentAutoRegistration(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
-	
+
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("NewAgentAutoRegistration() status = %v, want %v", status, http.StatusOK)
 	}
-	
+
 	// Verify agent was created
 	agent, err := st.GetAgent("agent-001")
 	if err != nil {
@@ -70,7 +70,7 @@ func TestWebhookHandler_NewAgentAutoRegistration(t *testing.T) {
 
 func TestWebhookHandler_ExistingAgentStatusUpdate(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
+	handler := NewWebhookHandlerWithNotifier(st, nil)
 
 	now := time.Now()
 
@@ -103,7 +103,7 @@ func TestWebhookHandler_ExistingAgentStatusUpdate(t *testing.T) {
 	req2 = addTestUserToContextWebhook(req2)
 	rr2 := httptest.NewRecorder()
 	handler.ServeHTTP(rr2, req2)
-	
+
 	// Verify agent was updated
 	agent, err := st.GetAgent("agent-001")
 	if err != nil {
@@ -119,7 +119,7 @@ func TestWebhookHandler_ExistingAgentStatusUpdate(t *testing.T) {
 
 func TestWebhookHandler_SessionAutoCreation(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
+	handler := NewWebhookHandlerWithNotifier(st, nil)
 
 	now := time.Now()
 	reqBody := map[string]interface{}{
@@ -137,11 +137,11 @@ func TestWebhookHandler_SessionAutoCreation(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
-	
+
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("SessionAutoCreation() status = %v, want %v", status, http.StatusOK)
 	}
-	
+
 	// Verify session was created
 	session, err := st.GetSession("agent-001", "task-001")
 	if err != nil {
@@ -157,7 +157,7 @@ func TestWebhookHandler_SessionAutoCreation(t *testing.T) {
 
 func TestWebhookHandler_SessionUpdateOnTaskEnd(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
+	handler := NewWebhookHandlerWithNotifier(st, nil)
 
 	now := time.Now()
 
@@ -190,7 +190,7 @@ func TestWebhookHandler_SessionUpdateOnTaskEnd(t *testing.T) {
 	req2 = addTestUserToContextWebhook(req2)
 	rr2 := httptest.NewRecorder()
 	handler.ServeHTTP(rr2, req2)
-	
+
 	// Verify session was updated
 	session, err := st.GetSession("agent-001", "task-001")
 	if err != nil {
@@ -200,7 +200,7 @@ func TestWebhookHandler_SessionUpdateOnTaskEnd(t *testing.T) {
 	if session.LastUpdated.Before(now) {
 		t.Errorf("SessionUpdateOnTaskEnd() last_updated not updated, got %v, want >= %v", session.LastUpdated, now)
 	}
-	
+
 	// Verify status history
 	history, err := st.GetStatusHistory("agent-001", "task-001")
 	if err != nil {
@@ -209,7 +209,7 @@ func TestWebhookHandler_SessionUpdateOnTaskEnd(t *testing.T) {
 	if len(history) != 2 {
 		t.Errorf("SessionUpdateOnTaskEnd() status history count = %v, want 2", len(history))
 	}
-	
+
 	// Verify latest status is success
 	latest, err := st.GetLatestStatus("agent-001", "task-001")
 	if err != nil {
@@ -222,7 +222,7 @@ func TestWebhookHandler_SessionUpdateOnTaskEnd(t *testing.T) {
 
 func TestWebhookHandler_StatusHistoryRecording(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
+	handler := NewWebhookHandlerWithNotifier(st, nil)
 
 	now := time.Now()
 
@@ -243,7 +243,7 @@ func TestWebhookHandler_StatusHistoryRecording(t *testing.T) {
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
 	}
-	
+
 	// Verify status history
 	history, err := st.GetStatusHistory("agent-001", "task-001")
 	if err != nil {
@@ -256,26 +256,26 @@ func TestWebhookHandler_StatusHistoryRecording(t *testing.T) {
 
 func TestWebhookHandler_InvalidStatusReportData(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
-	
+	handler := NewWebhookHandlerWithNotifier(st, nil)
+
 	tests := []struct {
-		name    string
-		reqBody map[string]interface{}
+		name       string
+		reqBody    map[string]interface{}
 		wantStatus int
 	}{
 		{
 			name: "missing agent_id",
 			reqBody: map[string]interface{}{
 				"session_topic": "task-001",
-				"status":         "running",
-				"timestamp":      time.Now().Format(time.RFC3339),
+				"status":        "running",
+				"timestamp":     time.Now().Format(time.RFC3339),
 			},
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name: "missing session_topic",
 			reqBody: map[string]interface{}{
-				"agent_id": "agent-001",
+				"agent_id":  "agent-001",
 				"status":    "running",
 				"timestamp": time.Now().Format(time.RFC3339),
 			},
@@ -286,8 +286,8 @@ func TestWebhookHandler_InvalidStatusReportData(t *testing.T) {
 			reqBody: map[string]interface{}{
 				"agent_id":      "agent-001",
 				"session_topic": "task-001",
-				"status":         "invalid",
-				"timestamp":      time.Now().Format(time.RFC3339),
+				"status":        "invalid",
+				"timestamp":     time.Now().Format(time.RFC3339),
 			},
 			wantStatus: http.StatusBadRequest,
 		},
@@ -296,12 +296,12 @@ func TestWebhookHandler_InvalidStatusReportData(t *testing.T) {
 			reqBody: map[string]interface{}{
 				"agent_id":      "agent-001",
 				"session_topic": "task-001",
-				"status":         "running",
+				"status":        "running",
 			},
 			wantStatus: http.StatusBadRequest,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(tt.reqBody)
@@ -311,7 +311,7 @@ func TestWebhookHandler_InvalidStatusReportData(t *testing.T) {
 			rr := httptest.NewRecorder()
 
 			handler.ServeHTTP(rr, req)
-			
+
 			if status := rr.Code; status != tt.wantStatus {
 				t.Errorf("InvalidStatusReportData(%s) status = %v, want %v", tt.name, status, tt.wantStatus)
 			}
@@ -321,11 +321,11 @@ func TestWebhookHandler_InvalidStatusReportData(t *testing.T) {
 
 func TestWebhookHandler_ConcurrentStatusReports(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
-	
+	handler := NewWebhookHandlerWithNotifier(st, nil)
+
 	now := time.Now()
 	done := make(chan bool, 10)
-	
+
 	// Send 10 concurrent requests
 	for i := 0; i < 10; i++ {
 		go func(id int) {
@@ -345,12 +345,12 @@ func TestWebhookHandler_ConcurrentStatusReports(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	// Wait for all requests
 	for i := 0; i < 10; i++ {
 		<-done
 	}
-	
+
 	// Verify all sessions were created
 	sessions := st.ListSessions("agent-001", true)
 	if len(sessions) != 10 {
@@ -360,7 +360,7 @@ func TestWebhookHandler_ConcurrentStatusReports(t *testing.T) {
 
 func TestWebhookHandler_ResponseTimeRequirement(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
+	handler := NewWebhookHandlerWithNotifier(st, nil)
 
 	now := time.Now()
 	reqBody := map[string]interface{}{
@@ -376,11 +376,11 @@ func TestWebhookHandler_ResponseTimeRequirement(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
-	
+
 	start := time.Now()
 	handler.ServeHTTP(rr, req)
 	duration := time.Since(start)
-	
+
 	if duration > 1*time.Second {
 		t.Errorf("ResponseTimeRequirement() response time = %v, want < 1s", duration)
 	}
@@ -388,7 +388,7 @@ func TestWebhookHandler_ResponseTimeRequirement(t *testing.T) {
 
 func TestWebhookHandler_OptionalFields(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
+	handler := NewWebhookHandlerWithNotifier(st, nil)
 
 	now := time.Now()
 	reqBody := map[string]interface{}{
@@ -407,13 +407,13 @@ func TestWebhookHandler_OptionalFields(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
-	
+
 	handler.ServeHTTP(rr, req)
-	
+
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("OptionalFields() status = %v, want %v", status, http.StatusOK)
 	}
-	
+
 	// Verify optional fields were stored
 	history, err := st.GetStatusHistory("agent-001", "task-001")
 	if err != nil {
@@ -428,7 +428,7 @@ func TestWebhookHandler_OptionalFields(t *testing.T) {
 	if history[0].Content != "Optional content" {
 		t.Errorf("OptionalFields() content = %v, want Optional content", history[0].Content)
 	}
-	
+
 	// Verify TTL was set
 	session, err := st.GetSession("agent-001", "task-001")
 	if err != nil {
@@ -441,7 +441,7 @@ func TestWebhookHandler_OptionalFields(t *testing.T) {
 
 func TestWebhookHandler_SessionExpirationTimeConfiguration(t *testing.T) {
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st)
+	handler := NewWebhookHandlerWithNotifier(st, nil)
 
 	now := time.Now()
 
@@ -460,9 +460,9 @@ func TestWebhookHandler_SessionExpirationTimeConfiguration(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req = addTestUserToContextWebhook(req)
 	rr := httptest.NewRecorder()
-	
+
 	handler.ServeHTTP(rr, req)
-	
+
 	// Verify TTL was set
 	session, err := st.GetSession("agent-001", "task-001")
 	if err != nil {
@@ -471,7 +471,7 @@ func TestWebhookHandler_SessionExpirationTimeConfiguration(t *testing.T) {
 	if session.TTLMinutes != 120 {
 		t.Errorf("SessionExpirationTimeConfiguration() ttl_minutes = %v, want 120", session.TTLMinutes)
 	}
-	
+
 	// Verify expiration time calculation
 	expectedExpiry := session.LastUpdated.Add(120 * time.Minute)
 	if session.ExpiredAt != nil && !session.ExpiredAt.Equal(expectedExpiry) {
@@ -675,7 +675,7 @@ func TestWebhookHandler_NotificationFailureDoesNotBlockResponse(t *testing.T) {
 func TestWebhookHandler_NoNotificationWhenNotifierIsNil(t *testing.T) {
 	// Handler without notifier should work normally
 	st := store.NewMemoryStore()
-	handler := NewWebhookHandler(st) // No notifier
+	handler := NewWebhookHandlerWithNotifier(st, nil) // No notifier
 
 	now := time.Now()
 

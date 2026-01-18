@@ -18,6 +18,14 @@ type Store interface {
 	RevokeRefreshToken(tokenHash string) error
 	RevokeAllUserTokens(userID string) error
 
+	// API Key operations
+	CreateAPIKey(apiKey *models.APIKey) error
+	GetAPIKeyByHash(keyHash string) (*models.APIKey, error)
+	GetAPIKeyByID(keyID string) (*models.APIKey, error)
+	ListAPIKeysByUser(userID string) ([]*models.APIKey, error)
+	RevokeAPIKey(keyID string) error
+	UpdateAPIKeyLastUsed(keyID string) error
+
 	// Agent operations
 	CreateOrUpdateAgent(agent *models.Agent) error
 	GetAgent(agentID string) (*models.Agent, error)
@@ -36,4 +44,8 @@ type Store interface {
 
 	// Maintenance
 	CheckExpiredSessions()
+
+	// System config operations
+	GetConfig(key string) (string, error)
+	SetConfig(key, value string) error
 }

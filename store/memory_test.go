@@ -439,3 +439,95 @@ func TestStore_ConcurrentAccess(t *testing.T) {
 		t.Errorf("ConcurrentAccess() session count = %v, want 10", len(sessions))
 	}
 }
+
+func TestStore_GetConfig(t *testing.T) {
+	s := NewMemoryStore()
+
+	// Test getting non-existing config
+	_, err := s.GetConfig("non_existing_key")
+	if err != ErrNotFound {
+		t.Errorf("GetConfig() error = %v, want ErrNotFound", err)
+	}
+
+	// Set a config value
+	err = s.SetConfig("test_key", "test_value")
+	if err != nil {
+		t.Fatalf("SetConfig() error = %v, want nil", err)
+	}
+
+	// Get the config value
+	value, err := s.GetConfig("test_key")
+	if err != nil {
+		t.Fatalf("GetConfig() error = %v, want nil", err)
+	}
+	if value != "test_value" {
+		t.Errorf("GetConfig() value = %v, want test_value", value)
+	}
+}
+
+func TestStore_SetConfig(t *testing.T) {
+	s := NewMemoryStore()
+
+	// Set a new config value
+	err := s.SetConfig("jwt_secret", "my-secret-key")
+	if err != nil {
+		t.Fatalf("SetConfig() error = %v, want nil", err)
+	}
+
+	// Verify the value
+	value, err := s.GetConfig("jwt_secret")
+	if err != nil {
+		t.Fatalf("GetConfig() error = %v, want nil", err)
+	}
+	if value != "my-secret-key" {
+		t.Errorf("GetConfig() value = %v, want my-secret-key", value)
+	}
+
+	// Update the config value
+	err = s.SetConfig("jwt_secret", "new-secret-key")
+	if err != nil {
+		t.Fatalf("SetConfig() update error = %v, want nil", err)
+	}
+
+	// Verify the updated value
+	value, err = s.GetConfig("jwt_secret")
+	if err != nil {
+		t.Fatalf("GetConfig() error = %v, want nil", err)
+	}
+	if value != "new-secret-key" {
+		t.Errorf("GetConfig() value = %v, want new-secret-key", value)
+	}
+}
+
+func TestStore_ConfigConcurrentAccess(t *testing.T) {
+	s := NewMemoryStore()
+
+	// Concurrent writes to different keys
+	done := make(chan bool, 10)
+	for i := 0; i < 10; i++ {
+		go func(id int) {
+			key := "key_" + string(rune('0'+id))
+			value := "value_" + string(rune('0'+id))
+			s.SetConfig(key, value)
+			done <- true
+		}(i)
+	}
+
+	// Wait for all goroutines
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+
+	// Verify all configs were set
+	for i := 0; i < 10; i++ {
+		key := "key_" + string(rune('0'+i))
+		expectedValue := "value_" + string(rune('0'+i))
+		value, err := s.GetConfig(key)
+		if err != nil {
+			t.Errorf("GetConfig(%s) error = %v, want nil", key, err)
+		}
+		if value != expectedValue {
+			t.Errorf("GetConfig(%s) value = %v, want %v", key, value, expectedValue)
+		}
+	}
+}

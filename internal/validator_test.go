@@ -1,14 +1,13 @@
 package internal
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 )
 
 func TestStatusReport_Validate(t *testing.T) {
 	now := time.Now()
-	
+
 	tests := []struct {
 		name    string
 		report  StatusReport
@@ -77,7 +76,7 @@ func TestStatusReport_Validate(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.report.Validate()
@@ -85,35 +84,5 @@ func TestStatusReport_Validate(t *testing.T) {
 				t.Errorf("StatusReport.Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-func TestParseStatusReport(t *testing.T) {
-	now := time.Now()
-	
-	validJSON := map[string]interface{}{
-		"agent_id":      "agent-001",
-		"agent_name":    "Test Agent",
-		"session_topic": "task-001",
-		"status":        "running",
-		"timestamp":     now.Format(time.RFC3339),
-		"ttl_minutes":   30,
-	}
-	
-	data, _ := json.Marshal(validJSON)
-	
-	report, err := ParseStatusReport(data)
-	if err != nil {
-		t.Fatalf("ParseStatusReport() error = %v, want nil", err)
-	}
-	if report.AgentID != "agent-001" {
-		t.Errorf("ParseStatusReport() agent_id = %v, want agent-001", report.AgentID)
-	}
-	
-	// Test invalid JSON
-	invalidData := []byte(`{"invalid": json}`)
-	_, err = ParseStatusReport(invalidData)
-	if err == nil {
-		t.Error("ParseStatusReport() should return error for invalid JSON")
 	}
 }

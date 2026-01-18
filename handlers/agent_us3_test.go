@@ -34,13 +34,13 @@ func setupTestStoreForUS3() store.Store {
 
 	// Create test user
 	user := &models.User{
-		ID:       testUserIDUS3,
-		Email:    testUserEmailUS3,
-		Name:     "Test User",
-		PasswordHash: "dummy-hash",
+		ID:            testUserIDUS3,
+		Email:         testUserEmailUS3,
+		Name:          "Test User",
+		PasswordHash:  "dummy-hash",
 		EmailVerified: true,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	st.CreateUser(user)
 

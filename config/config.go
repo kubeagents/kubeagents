@@ -91,7 +91,7 @@ func Load() *Config {
 
 	// JWT configuration
 	jwtConfig := JWTConfig{
-		Secret:             getEnv("JWT_SECRET", "default-secret-change-in-production"),
+		Secret:             getEnv("JWT_SECRET", ""), // Empty means auto-generate and save to storage
 		AccessTokenExpiry:  getEnvAsDuration("JWT_ACCESS_TOKEN_EXPIRY", "15m"),
 		RefreshTokenExpiry: getEnvAsDuration("JWT_REFRESH_TOKEN_EXPIRY", "168h"), // 7 days
 	}

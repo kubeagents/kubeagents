@@ -10,7 +10,7 @@ func TestLoad(t *testing.T) {
 	// Save original values
 	originalPort := os.Getenv("PORT")
 	originalCORS := os.Getenv("CORS_ALLOWED_ORIGINS")
-	
+
 	// Clean up after test
 	defer func() {
 		if originalPort != "" {
@@ -24,11 +24,11 @@ func TestLoad(t *testing.T) {
 			os.Unsetenv("CORS_ALLOWED_ORIGINS")
 		}
 	}()
-	
+
 	// Test default values
 	os.Unsetenv("PORT")
 	os.Unsetenv("CORS_ALLOWED_ORIGINS")
-	
+
 	cfg := Load()
 	if cfg.Port != "8080" {
 		t.Errorf("Load() default port = %v, want 8080", cfg.Port)
@@ -36,11 +36,11 @@ func TestLoad(t *testing.T) {
 	if len(cfg.CORSAllowedOrigins) != 1 || cfg.CORSAllowedOrigins[0] != "*" {
 		t.Errorf("Load() default CORS = %v, want [*]", cfg.CORSAllowedOrigins)
 	}
-	
+
 	// Test custom values
 	os.Setenv("PORT", "9090")
 	os.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,https://example.com")
-	
+
 	cfg = Load()
 	if cfg.Port != "9090" {
 		t.Errorf("Load() custom port = %v, want 9090", cfg.Port)

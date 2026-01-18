@@ -20,14 +20,6 @@ type WebhookHandler struct {
 	notifier *notifier.NotificationManager
 }
 
-// NewWebhookHandler creates a new webhook handler without notifications
-func NewWebhookHandler(s store.Store) *WebhookHandler {
-	return &WebhookHandler{
-		store:    s,
-		notifier: nil,
-	}
-}
-
 // NewWebhookHandlerWithNotifier creates a new webhook handler with notifications
 func NewWebhookHandlerWithNotifier(s store.Store, n *notifier.NotificationManager) *WebhookHandler {
 	return &WebhookHandler{
@@ -190,8 +182,9 @@ func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport, userID s
 	}
 
 	// Check for status transition and send notification
+	// Notify when running -> success/failed/pending
 	if h.notifier != nil && previousStatus == "running" &&
-		(sr.Status == "success" || sr.Status == "failed") {
+		(sr.Status == "success" || sr.Status == "failed" || sr.Status == "pending") {
 
 		duration := time.Duration(0)
 		if !startTimestamp.IsZero() {

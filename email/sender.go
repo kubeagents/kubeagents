@@ -1,8 +1,10 @@
 package email
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"log"
 	"net/smtp"
 )
 
@@ -18,20 +20,6 @@ type EmailConfig struct {
 	SMTPPass   string
 	FromEmail  string
 	AppBaseURL string
-}
-
-// Validate validates the email configuration
-func (c *EmailConfig) Validate() error {
-	if c.SMTPHost == "" {
-		return errors.New("smtp_host is required")
-	}
-	if c.FromEmail == "" {
-		return errors.New("from_email is required")
-	}
-	if c.AppBaseURL == "" {
-		return errors.New("app_base_url is required")
-	}
-	return nil
 }
 
 // Sender interface for sending emails (useful for mocking in tests)
@@ -101,7 +89,16 @@ func (s *EmailService) SendVerificationEmail(toEmail, verifyToken string) error 
 		return err
 	}
 
-	return s.sendMail(toEmail, subject, body)
+	// Log user and verification link
+	verifyLink := fmt.Sprintf("%s/verify?token=%s", s.config.AppBaseURL, verifyToken)
+	log.Printf("[EMAIL] User: %s, Verification link: %s", toEmail, verifyLink)
+
+	err = s.sendMail(toEmail, subject, body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // sendMail sends an email using SMTP
@@ -120,9 +117,69 @@ func (s *EmailService) sendMail(to, subject, body string) error {
 		auth = smtp.PlainAuth("", s.config.SMTPUser, s.config.SMTPPass, s.config.SMTPHost)
 	}
 
-	err := smtp.SendMail(addr, auth, from, []string{to}, msg)
+	// Check if using SSL (port 465) or STARTTLS (port 587)
+	var err error
+	if s.config.SMTPPort == 465 {
+		err = s.sendMailSSL(addr, auth, from, to, msg)
+	} else {
+		err = smtp.SendMail(addr, auth, from, []string{to}, msg)
+	}
+
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSendFailed, err)
+	}
+
+	return nil
+}
+
+// sendMailSSL sends email using direct SSL/TLS connection (for port 465)
+func (s *EmailService) sendMailSSL(addr string, auth smtp.Auth, from, to string, msg []byte) error {
+	// Create TLS configuration
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: false,
+		ServerName:         s.config.SMTPHost,
+	}
+
+	// Connect to SMTP server with TLS
+	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer conn.Close()
+
+	// Create SMTP client
+	client, err := smtp.NewClient(conn, s.config.SMTPHost)
+	if err != nil {
+		return fmt.Errorf("failed to create SMTP client: %w", err)
+	}
+	defer client.Close()
+
+	// Authenticate if credentials provided
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("auth failed: %w", err)
+		}
+	}
+
+	// Set sender
+	if err := client.Mail(from); err != nil {
+		return fmt.Errorf("failed to set sender: %w", err)
+	}
+
+	// Set recipient
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("failed to set recipient: %w", err)
+	}
+
+	// Send email body
+	writer, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("failed to get data writer: %w", err)
+	}
+
+	_, err = writer.Write(msg)
+	if err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
 	}
 
 	return nil

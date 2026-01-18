@@ -25,13 +25,13 @@ func setupTestStoreWithAgents() store.Store {
 
 	// Create test user
 	user := &models.User{
-		ID:       testUserID,
-		Email:    testUserEmail,
-		Name:     "Test User",
-		PasswordHash: "dummy-hash",
+		ID:            testUserID,
+		Email:         testUserEmail,
+		Name:          "Test User",
+		PasswordHash:  "dummy-hash",
 		EmailVerified: true,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	st.CreateUser(user)
 

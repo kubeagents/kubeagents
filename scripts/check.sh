@@ -7,6 +7,7 @@
 #     --test      Run unit tests only
 #     --deadcode  Run deadcode check only
 #     --lint      Run linter only
+#     --gomod     Run go mod check only
 #     --build     Run build check only
 #     --help      Show this help message
 
@@ -206,6 +207,70 @@ run_fmt() {
     fi
 }
 
+# Run go mod check
+run_gomod() {
+    print_header "Go Mod Check"
+
+    local failed=0
+
+    # Check if go.mod exists
+    if [ ! -f "go.mod" ]; then
+        print_error "go.mod file not found"
+        return 1
+    fi
+
+    # Verify dependencies have expected content
+    echo "Verifying dependencies..."
+    if ! go mod verify 2>&1; then
+        print_error "go mod verify failed"
+        failed=1
+    fi
+
+    # Check if go.mod and go.sum are tidy
+    echo "Checking if go.mod is tidy..."
+
+    # Create temp copies
+    cp go.mod go.mod.bak
+    if [ -f "go.sum" ]; then
+        cp go.sum go.sum.bak
+    fi
+
+    # Run go mod tidy
+    go mod tidy 2>&1
+
+    # Compare files
+    if ! diff -q go.mod go.mod.bak >/dev/null 2>&1; then
+        print_error "go.mod is not tidy"
+        echo "Differences found in go.mod:"
+        diff go.mod go.mod.bak || true
+        echo ""
+        echo "Run 'go mod tidy' to fix"
+        failed=1
+    fi
+
+    if [ -f "go.sum.bak" ]; then
+        if ! diff -q go.sum go.sum.bak >/dev/null 2>&1; then
+            print_error "go.sum is not tidy"
+            echo "Differences found in go.sum"
+            echo "Run 'go mod tidy' to fix"
+            failed=1
+        fi
+    fi
+
+    # Restore original files
+    mv go.mod.bak go.mod
+    if [ -f "go.sum.bak" ]; then
+        mv go.sum.bak go.sum
+    fi
+
+    if [ $failed -eq 0 ]; then
+        print_success "Go mod check passed"
+        return 0
+    else
+        return 1
+    fi
+}
+
 # Print summary
 print_summary() {
     print_header "Summary"
@@ -234,6 +299,7 @@ show_help() {
     echo "  --lint      Run linter only"
     echo "  --vet       Run go vet only"
     echo "  --fmt       Run format check only"
+    echo "  --gomod     Run go mod check only"
     echo "  --build     Run build check only"
     echo "  --quick     Run quick checks (build, vet, test without verbose)"
     echo "  --help      Show this help message"
@@ -243,6 +309,7 @@ show_help() {
     echo "  $0 --quick      # Run quick checks"
     echo "  $0 --test       # Run tests only"
     echo "  $0 --deadcode   # Check for deadcode only"
+    echo "  $0 --gomod      # Check go.mod validity"
 }
 
 # Main
@@ -257,6 +324,7 @@ main() {
             run_build
             run_vet
             run_fmt
+            run_gomod
             run_tests_short
             run_deadcode
             run_lint
@@ -280,6 +348,9 @@ main() {
             ;;
         --fmt)
             run_fmt
+            ;;
+        --gomod)
+            run_gomod
             ;;
         --build)
             run_build

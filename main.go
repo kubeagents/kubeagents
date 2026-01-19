@@ -255,7 +255,35 @@ func main() {
 	log.Println("Shutting down server...")
 	cancel()
 
-	// Shutdown notification manager first (wait for pending notifications)
+	// Shutdown HTTP server first (stop accepting new connections)
+	log.Println("Shutting down HTTP server...")
+
+	// Create shutdown context with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+
+	// Start shutdown in goroutine
+	shutdownDone := make(chan struct{})
+	go func() {
+		defer close(shutdownDone)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("HTTP server shutdown error: %v", err)
+		} else {
+			log.Println("HTTP server shutdown complete")
+		}
+		shutdownCancel() // Cancel context after shutdown completes
+	}()
+
+	// Wait for shutdown or force exit after timeout
+	select {
+	case <-shutdownDone:
+		// Normal shutdown completed
+	case <-time.After(5 * time.Second):
+		log.Println("Shutdown timeout, forcing exit...")
+		os.Exit(0)
+	}
+
+	// Shutdown notification manager (wait for pending notifications)
+	log.Println("Shutting down notification manager...")
 	notifyShutdownCtx, notifyCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer notifyCancel()
 
@@ -263,16 +291,23 @@ func main() {
 		log.Printf("Warning: Notification manager shutdown error: %v", err)
 	}
 
-	// Shutdown HTTP server
-	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelShutdown()
+	log.Println("Notification manager shutdown complete")
 
-	if err := srv.Shutdown(ctxShutdown); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
-	}
-
+	// Close database connection with timeout
 	if closeDB != nil {
-		closeDB()
+		log.Println("Closing database connection...")
+		dbCloseDone := make(chan struct{})
+		go func() {
+			closeDB()
+			close(dbCloseDone)
+		}()
+
+		select {
+		case <-dbCloseDone:
+			log.Println("Database connection closed")
+		case <-time.After(3 * time.Second):
+			log.Println("Database connection close timeout, continuing...")
+		}
 	}
 
 	log.Println("Server exited")

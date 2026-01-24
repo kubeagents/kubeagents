@@ -80,7 +80,8 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // processStatusReport processes a status report and updates the store
 func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport, userID string) error {
-	now := time.Now()
+	// Use UTC time to avoid timezone issues with PostgreSQL TIMESTAMP columns
+	now := time.Now().UTC()
 
 	// Get previous status for transition detection
 	var previousStatus string
@@ -203,8 +204,14 @@ func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport, userID s
 			Duration:     duration,
 		}
 
+		user, err := h.store.GetUserByID(userID)
+		if err != nil {
+			log.Printf("Failed to load user for notification: %v", err)
+			return nil
+		}
+
 		// Send notification asynchronously (non-blocking)
-		if err := h.notifier.Notify(context.Background(), notificationData); err != nil {
+		if err := h.notifier.Notify(context.Background(), notificationData, user.NotificationWebhookURL); err != nil {
 			// Log error but don't fail the request
 			log.Printf("Failed to queue notification: %v", err)
 		}

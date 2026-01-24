@@ -10,7 +10,6 @@ import (
 
 // NotificationManager manages async notification delivery
 type NotificationManager struct {
-	enabled    bool
 	client     *HTTPClient
 	wg         sync.WaitGroup
 	shutdownCh chan struct{}
@@ -19,27 +18,17 @@ type NotificationManager struct {
 }
 
 // NewNotificationManager creates a new notification manager
-func NewNotificationManager(webhookURL string, timeout time.Duration) *NotificationManager {
-	if webhookURL == "" {
-		log.Println("Webhook notifications disabled (NOTIFICATION_WEBHOOK_URL not set)")
-		return &NotificationManager{
-			enabled:    false,
-			shutdownCh: make(chan struct{}),
-		}
-	}
-
-	log.Printf("Webhook notifications enabled: %s", webhookURL)
+func NewNotificationManager(timeout time.Duration) *NotificationManager {
 	return &NotificationManager{
-		enabled:    true,
-		client:     NewHTTPClient(webhookURL, timeout),
+		client:     NewHTTPClient(timeout),
 		shutdownCh: make(chan struct{}),
 	}
 }
 
 // Notify sends a notification asynchronously
-func (nm *NotificationManager) Notify(ctx context.Context, data *NotificationData) error {
-	if !nm.enabled {
-		return nil // Skip if disabled
+func (nm *NotificationManager) Notify(ctx context.Context, data *NotificationData, webhookURL string) error {
+	if webhookURL == "" {
+		return nil
 	}
 
 	// Check if already shutdown
@@ -66,7 +55,7 @@ func (nm *NotificationManager) Notify(ctx context.Context, data *NotificationDat
 		defer cancel()
 
 		// Send notification (no shutdown check - let queued notifications complete)
-		if err := nm.client.Send(notifyCtx, payload); err != nil {
+		if err := nm.client.Send(notifyCtx, webhookURL, payload); err != nil {
 			log.Printf("Failed to send notification: %v", err)
 		}
 	}()

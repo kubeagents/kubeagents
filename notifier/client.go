@@ -19,15 +19,13 @@ const (
 
 // HTTPClient handles HTTP requests with retry logic
 type HTTPClient struct {
-	url        string
 	timeout    time.Duration
 	httpClient *http.Client
 }
 
 // NewHTTPClient creates a new HTTP client
-func NewHTTPClient(url string, timeout time.Duration) *HTTPClient {
+func NewHTTPClient(timeout time.Duration) *HTTPClient {
 	return &HTTPClient{
-		url:     url,
 		timeout: timeout,
 		httpClient: &http.Client{
 			Timeout: timeout,
@@ -36,7 +34,7 @@ func NewHTTPClient(url string, timeout time.Duration) *HTTPClient {
 }
 
 // Send sends payload to webhook URL with retry logic
-func (c *HTTPClient) Send(ctx context.Context, payload []byte) error {
+func (c *HTTPClient) Send(ctx context.Context, url string, payload []byte) error {
 	var lastErr error
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -53,7 +51,7 @@ func (c *HTTPClient) Send(ctx context.Context, payload []byte) error {
 		}
 
 		// Create request
-		req, err := http.NewRequestWithContext(ctx, "POST", c.url, bytes.NewReader(payload))
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 		if err != nil {
 			lastErr = fmt.Errorf("failed to create request: %w", err)
 			continue

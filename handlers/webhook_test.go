@@ -12,6 +12,7 @@ import (
 
 	"github.com/kubeagents/kubeagents/auth"
 	"github.com/kubeagents/kubeagents/middleware"
+	"github.com/kubeagents/kubeagents/models"
 	"github.com/kubeagents/kubeagents/notifier"
 	"github.com/kubeagents/kubeagents/store"
 )
@@ -27,6 +28,26 @@ func addTestUserToContextWebhook(r *http.Request) *http.Request {
 	}
 	ctx := context.WithValue(r.Context(), middleware.UserContextKey, claims)
 	return r.WithContext(ctx)
+}
+
+func createTestUserWithWebhook(t *testing.T, st store.Store, webhookURL string) {
+	t.Helper()
+
+	now := time.Now()
+	user := &models.User{
+		ID:                     testUserIDWebhook,
+		Email:                  testUserEmailWebhook,
+		PasswordHash:           "test-password-hash",
+		Name:                   "Test User",
+		NotificationWebhookURL: webhookURL,
+		EmailVerified:          true,
+		CreatedAt:              now,
+		UpdatedAt:              now,
+	}
+
+	if err := st.CreateUser(user); err != nil {
+		t.Fatalf("CreateUser() failed: %v", err)
+	}
 }
 
 func TestWebhookHandler_NewAgentAutoRegistration(t *testing.T) {
@@ -493,8 +514,9 @@ func TestWebhookHandler_StatusTransitionNotification_RunningToSuccess(t *testing
 
 	// Create store and handler with notifier
 	st := store.NewMemoryStore()
-	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
+	nm := notifier.NewNotificationManager(5 * time.Second)
 	handler := NewWebhookHandlerWithNotifier(st, nm)
+	createTestUserWithWebhook(t, st, server.URL)
 
 	now := time.Now()
 
@@ -591,8 +613,9 @@ func TestWebhookHandler_StatusTransitionNotification_RunningToFailed(t *testing.
 	defer server.Close()
 
 	st := store.NewMemoryStore()
-	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
+	nm := notifier.NewNotificationManager(5 * time.Second)
 	handler := NewWebhookHandlerWithNotifier(st, nm)
+	createTestUserWithWebhook(t, st, server.URL)
 
 	now := time.Now()
 
@@ -617,8 +640,9 @@ func TestWebhookHandler_NoNotificationForNonRunningTransition(t *testing.T) {
 	defer server.Close()
 
 	st := store.NewMemoryStore()
-	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
+	nm := notifier.NewNotificationManager(5 * time.Second)
 	handler := NewWebhookHandlerWithNotifier(st, nm)
+	createTestUserWithWebhook(t, st, server.URL)
 
 	now := time.Now()
 
@@ -651,8 +675,9 @@ func TestWebhookHandler_NotificationFailureDoesNotBlockResponse(t *testing.T) {
 	defer server.Close()
 
 	st := store.NewMemoryStore()
-	nm := notifier.NewNotificationManager(server.URL, 5*time.Second)
+	nm := notifier.NewNotificationManager(5 * time.Second)
 	handler := NewWebhookHandlerWithNotifier(st, nm)
+	createTestUserWithWebhook(t, st, server.URL)
 
 	now := time.Now()
 

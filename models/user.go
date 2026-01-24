@@ -8,14 +8,15 @@ import (
 
 // User represents a system user
 type User struct {
-	ID            string    `json:"id"`
-	Email         string    `json:"email"`
-	PasswordHash  string    `json:"-"` // Never expose in JSON
-	Name          string    `json:"name,omitempty"`
-	EmailVerified bool      `json:"email_verified"`
-	VerifyToken   string    `json:"-"` // Never expose in JSON
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID                     string    `json:"id"`
+	Email                  string    `json:"email"`
+	PasswordHash           string    `json:"-"` // Never expose in JSON
+	Name                   string    `json:"name,omitempty"`
+	NotificationWebhookURL string    `json:"notification_webhook_url,omitempty"`
+	EmailVerified          bool      `json:"email_verified"`
+	VerifyToken            string    `json:"-"` // Never expose in JSON
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)

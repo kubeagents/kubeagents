@@ -30,6 +30,8 @@ go run main.go
 - `PORT`: 服务器端口（默认: `8080`）
 - `CORS_ALLOWED_ORIGINS`: 允许的 CORS 来源（逗号分隔，默认: `*`）
 
+Webhook 通知地址在 Web 页面按用户配置，不再通过环境变量设置。
+
 ## API 文档
 
 详细 API 规范请参见 [contracts/api.yaml](../specs/001-kubeagents-system/contracts/api.yaml)。

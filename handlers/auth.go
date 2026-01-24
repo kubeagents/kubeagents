@@ -4,8 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,6 +51,11 @@ type LoginRequest struct {
 // RefreshRequest represents a token refresh request
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
+}
+
+// UpdateMeRequest represents updates to the current user
+type UpdateMeRequest struct {
+	NotificationWebhookURL *string `json:"notification_webhook_url"`
 }
 
 // AuthResponse represents an authentication response
@@ -351,6 +359,44 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, user)
 }
 
+// UpdateMe updates current user's settings
+func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	var req UpdateMeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	user, err := h.store.GetUserByID(claims.UserID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	if req.NotificationWebhookURL != nil {
+		webhookURL := strings.TrimSpace(*req.NotificationWebhookURL)
+		if err := validateWebhookURL(webhookURL); err != nil {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		user.NotificationWebhookURL = webhookURL
+	}
+
+	user.UpdatedAt = time.Now()
+	if err := h.store.UpdateUser(user); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to update user")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, user)
+}
+
 // ResendVerify resends the verification email
 func (h *AuthHandler) ResendVerify(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -413,6 +459,21 @@ func generateToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+func validateWebhookURL(raw string) error {
+	if raw == "" {
+		return nil
+	}
+
+	parsed, err := url.ParseRequestURI(raw)
+	if err != nil {
+		return errors.New("invalid notification_webhook_url")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("notification_webhook_url must start with http or https")
+	}
+	return nil
 }
 
 // respondError sends an error response

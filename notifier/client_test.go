@@ -33,10 +33,10 @@ func TestHTTPClient_Send_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPClient(server.URL, 5*time.Second)
+	client := NewHTTPClient(5 * time.Second)
 	payload := []byte(`{"msg_type":"text","content":{"text":"test"}}`)
 
-	err := client.Send(context.Background(), payload)
+	err := client.Send(context.Background(), server.URL, payload)
 
 	if err != nil {
 		t.Errorf("Send() error = %v, want nil", err)
@@ -55,10 +55,10 @@ func TestHTTPClient_Send_RetryOnFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPClient(server.URL, 5*time.Second)
+	client := NewHTTPClient(5 * time.Second)
 	payload := []byte(`{"msg_type":"text"}`)
 
-	err := client.Send(context.Background(), payload)
+	err := client.Send(context.Background(), server.URL, payload)
 
 	if err != nil {
 		t.Errorf("Send() error = %v, want nil (should succeed on 3rd attempt)", err)
@@ -77,10 +77,10 @@ func TestHTTPClient_Send_ExponentialBackoff(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPClient(server.URL, 5*time.Second)
+	client := NewHTTPClient(5 * time.Second)
 	payload := []byte(`{"msg_type":"text"}`)
 
-	client.Send(context.Background(), payload)
+	client.Send(context.Background(), server.URL, payload)
 
 	if len(timestamps) != 3 {
 		t.Fatalf("Send() attempts = %d, want 3", len(timestamps))
@@ -108,10 +108,10 @@ func TestHTTPClient_Send_MaxRetries(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPClient(server.URL, 5*time.Second)
+	client := NewHTTPClient(5 * time.Second)
 	payload := []byte(`{"msg_type":"text"}`)
 
-	err := client.Send(context.Background(), payload)
+	err := client.Send(context.Background(), server.URL, payload)
 
 	if err == nil {
 		t.Error("Send() error = nil, want error after max retries")
@@ -136,10 +136,10 @@ func TestHTTPClient_Send_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	client := NewHTTPClient(server.URL, 5*time.Second)
+	client := NewHTTPClient(5 * time.Second)
 	payload := []byte(`{"msg_type":"text"}`)
 
-	err := client.Send(ctx, payload)
+	err := client.Send(ctx, server.URL, payload)
 
 	if err == nil {
 		t.Error("Send() error = nil, want context error")
@@ -172,10 +172,10 @@ func TestHTTPClient_Send_SuccessOn2xxStatus(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewHTTPClient(server.URL, 5*time.Second)
+			client := NewHTTPClient(5 * time.Second)
 			payload := []byte(`{"msg_type":"text"}`)
 
-			err := client.Send(context.Background(), payload)
+			err := client.Send(context.Background(), server.URL, payload)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Send() with status %d, error = %v, wantErr %v", tt.statusCode, err, tt.wantErr)
@@ -185,10 +185,10 @@ func TestHTTPClient_Send_SuccessOn2xxStatus(t *testing.T) {
 }
 
 func TestHTTPClient_Send_InvalidURL(t *testing.T) {
-	client := NewHTTPClient("http://invalid-url-that-does-not-exist-12345.com", 5*time.Second)
+	client := NewHTTPClient(5 * time.Second)
 	payload := []byte(`{"msg_type":"text"}`)
 
-	err := client.Send(context.Background(), payload)
+	err := client.Send(context.Background(), "http://invalid-url-that-does-not-exist-12345.com", payload)
 
 	if err == nil {
 		t.Error("Send() with invalid URL, error = nil, want error")
@@ -202,10 +202,10 @@ func TestHTTPClient_Send_Timeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPClient(server.URL, 100*time.Millisecond)
+	client := NewHTTPClient(100 * time.Millisecond)
 	payload := []byte(`{"msg_type":"text"}`)
 
-	err := client.Send(context.Background(), payload)
+	err := client.Send(context.Background(), server.URL, payload)
 
 	if err == nil {
 		t.Error("Send() with timeout, error = nil, want timeout error")

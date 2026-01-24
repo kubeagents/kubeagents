@@ -56,50 +56,6 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-func TestLoad_NotificationWebhookURL(t *testing.T) {
-	// Save original value
-	originalURL := os.Getenv("NOTIFICATION_WEBHOOK_URL")
-	defer func() {
-		if originalURL != "" {
-			os.Setenv("NOTIFICATION_WEBHOOK_URL", originalURL)
-		} else {
-			os.Unsetenv("NOTIFICATION_WEBHOOK_URL")
-		}
-	}()
-
-	tests := []struct {
-		name   string
-		envVal string
-		want   string
-	}{
-		{
-			name:   "webhook URL set",
-			envVal: "https://example.com/webhook",
-			want:   "https://example.com/webhook",
-		},
-		{
-			name:   "webhook URL empty",
-			envVal: "",
-			want:   "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.envVal != "" {
-				os.Setenv("NOTIFICATION_WEBHOOK_URL", tt.envVal)
-			} else {
-				os.Unsetenv("NOTIFICATION_WEBHOOK_URL")
-			}
-
-			cfg := Load()
-			if cfg.NotificationWebhookURL != tt.want {
-				t.Errorf("Load() NotificationWebhookURL = %v, want %v", cfg.NotificationWebhookURL, tt.want)
-			}
-		})
-	}
-}
-
 func TestLoad_NotificationTimeout(t *testing.T) {
 	// Save original value
 	originalTimeout := os.Getenv("NOTIFICATION_TIMEOUT_SECONDS")

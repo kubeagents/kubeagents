@@ -55,8 +55,9 @@ The application will automatically run database migrations on startup.
 
 - `PORT`: Server port (default: `8080`)
 - `CORS_ALLOWED_ORIGINS`: Allowed CORS origins (comma-separated, default: `*`)
-- `NOTIFICATION_WEBHOOK_URL`: Optional webhook URL for status notifications
 - `NOTIFICATION_TIMEOUT_SECONDS`: Notification timeout in seconds (default: `5`)
+
+Webhook notification URLs are configured per user in the web UI (Settings), not via environment variables.
 
 ### Database Configuration (Optional)
 

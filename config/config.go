@@ -38,14 +38,13 @@ type SMTPConfig struct {
 
 // Config holds application configuration
 type Config struct {
-	Port                   string
-	CORSAllowedOrigins     []string
-	NotificationWebhookURL string
-	NotificationTimeout    time.Duration
-	Database               DatabaseConfig
-	JWT                    JWTConfig
-	SMTP                   SMTPConfig
-	AppBaseURL             string
+	Port                string
+	CORSAllowedOrigins  []string
+	NotificationTimeout time.Duration
+	Database            DatabaseConfig
+	JWT                 JWTConfig
+	SMTP                SMTPConfig
+	AppBaseURL          string
 }
 
 // Load loads configuration from environment variables with defaults
@@ -64,9 +63,6 @@ func Load() *Config {
 	for i, origin := range origins {
 		origins[i] = strings.TrimSpace(origin)
 	}
-
-	// Notification webhook URL
-	notificationWebhookURL := os.Getenv("NOTIFICATION_WEBHOOK_URL")
 
 	// Notification timeout (default 5 seconds)
 	notificationTimeout := 5 * time.Second
@@ -108,14 +104,13 @@ func Load() *Config {
 	appBaseURL := getEnv("APP_BASE_URL", "http://localhost:5173")
 
 	return &Config{
-		Port:                   port,
-		CORSAllowedOrigins:     origins,
-		NotificationWebhookURL: notificationWebhookURL,
-		NotificationTimeout:    notificationTimeout,
-		Database:               dbConfig,
-		JWT:                    jwtConfig,
-		SMTP:                   smtpConfig,
-		AppBaseURL:             appBaseURL,
+		Port:                port,
+		CORSAllowedOrigins:  origins,
+		NotificationTimeout: notificationTimeout,
+		Database:            dbConfig,
+		JWT:                 jwtConfig,
+		SMTP:                smtpConfig,
+		AppBaseURL:          appBaseURL,
 	}
 }
 

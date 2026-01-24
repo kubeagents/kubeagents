@@ -13,7 +13,7 @@ import (
 
 func TestNotificationManager_Notify_Disabled(t *testing.T) {
 	// When webhook URL is empty, should not send
-	manager := NewNotificationManager("", 5*time.Second)
+	manager := NewNotificationManager(5 * time.Second)
 
 	err := manager.Notify(context.Background(), &NotificationData{
 		AgentID:      "test-agent",
@@ -22,7 +22,7 @@ func TestNotificationManager_Notify_Disabled(t *testing.T) {
 		ToStatus:     "success",
 		Timestamp:    time.Now(),
 		Duration:     1 * time.Minute,
-	})
+	}, "")
 
 	if err != nil {
 		t.Errorf("Notify() with disabled manager, error = %v, want nil", err)
@@ -39,7 +39,7 @@ func TestNotificationManager_Notify_Async(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager := NewNotificationManager(server.URL, 5*time.Second)
+	manager := NewNotificationManager(5 * time.Second)
 
 	start := time.Now()
 	err := manager.Notify(context.Background(), &NotificationData{
@@ -49,7 +49,7 @@ func TestNotificationManager_Notify_Async(t *testing.T) {
 		ToStatus:     "success",
 		Timestamp:    time.Now(),
 		Duration:     1 * time.Minute,
-	})
+	}, server.URL)
 	duration := time.Since(start)
 
 	if err != nil {
@@ -77,7 +77,7 @@ func TestNotificationManager_GracefulShutdown(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager := NewNotificationManager(server.URL, 5*time.Second)
+	manager := NewNotificationManager(5 * time.Second)
 
 	// Send multiple notifications
 	pending := 3
@@ -89,7 +89,7 @@ func TestNotificationManager_GracefulShutdown(t *testing.T) {
 			ToStatus:     "success",
 			Timestamp:    time.Now(),
 			Duration:     1 * time.Minute,
-		})
+		}, server.URL)
 		if err != nil {
 			t.Errorf("Notify() error = %v, want nil", err)
 		}
@@ -118,7 +118,7 @@ func TestNotificationManager_ShutdownTimeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager := NewNotificationManager(server.URL, 10*time.Second)
+	manager := NewNotificationManager(10 * time.Second)
 
 	err := manager.Notify(context.Background(), &NotificationData{
 		AgentID:      "test-agent",
@@ -127,7 +127,7 @@ func TestNotificationManager_ShutdownTimeout(t *testing.T) {
 		ToStatus:     "success",
 		Timestamp:    time.Now(),
 		Duration:     1 * time.Minute,
-	})
+	}, server.URL)
 	if err != nil {
 		t.Errorf("Notify() error = %v, want nil", err)
 	}
@@ -154,7 +154,7 @@ func TestNotificationManager_ConcurrentNotifications(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager := NewNotificationManager(server.URL, 5*time.Second)
+	manager := NewNotificationManager(5 * time.Second)
 
 	// Send notifications concurrently
 	numNotifications := 10
@@ -171,7 +171,7 @@ func TestNotificationManager_ConcurrentNotifications(t *testing.T) {
 				ToStatus:     "success",
 				Timestamp:    time.Now(),
 				Duration:     1 * time.Minute,
-			})
+			}, server.URL)
 			if err != nil {
 				t.Errorf("Notify() error = %v, want nil", err)
 			}
@@ -208,7 +208,7 @@ func TestNotificationManager_BuildPayloadError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager := NewNotificationManager(server.URL, 5*time.Second)
+	manager := NewNotificationManager(5 * time.Second)
 
 	// This should work fine - BuildPayload doesn't fail for normal data
 	err := manager.Notify(context.Background(), &NotificationData{
@@ -218,7 +218,7 @@ func TestNotificationManager_BuildPayloadError(t *testing.T) {
 		ToStatus:     "success",
 		Timestamp:    time.Now(),
 		Duration:     1 * time.Minute,
-	})
+	}, server.URL)
 
 	if err != nil {
 		t.Errorf("Notify() error = %v, want nil", err)
@@ -231,7 +231,7 @@ func TestNotificationManager_NotifyAfterShutdown(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager := NewNotificationManager(server.URL, 5*time.Second)
+	manager := NewNotificationManager(5 * time.Second)
 
 	// Shutdown first
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -246,7 +246,7 @@ func TestNotificationManager_NotifyAfterShutdown(t *testing.T) {
 		ToStatus:     "success",
 		Timestamp:    time.Now(),
 		Duration:     1 * time.Minute,
-	})
+	}, server.URL)
 
 	// Should not error, but notification should be skipped
 	if err != nil {

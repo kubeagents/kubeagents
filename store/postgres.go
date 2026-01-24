@@ -424,8 +424,8 @@ func (s *PostgresStore) CreateUser(user *models.User) error {
 	defer cancel()
 
 	query := `
-		INSERT INTO users (id, email, password_hash, name, email_verified, verify_token, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO users (id, email, password_hash, name, notification_webhook_url, email_verified, verify_token, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 
 	_, err := s.pool.Exec(ctx, query,
@@ -433,6 +433,7 @@ func (s *PostgresStore) CreateUser(user *models.User) error {
 		user.Email,
 		user.PasswordHash,
 		user.Name,
+		user.NotificationWebhookURL,
 		user.EmailVerified,
 		user.VerifyToken,
 		user.CreatedAt,
@@ -456,7 +457,7 @@ func (s *PostgresStore) GetUserByID(userID string) (*models.User, error) {
 	defer cancel()
 
 	query := `
-		SELECT id, email, password_hash, COALESCE(name, ''), email_verified, COALESCE(verify_token, ''), created_at, updated_at
+		SELECT id, email, password_hash, COALESCE(name, ''), COALESCE(notification_webhook_url, ''), email_verified, COALESCE(verify_token, ''), created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -469,6 +470,7 @@ func (s *PostgresStore) GetUserByID(userID string) (*models.User, error) {
 		&user.Email,
 		&user.PasswordHash,
 		&user.Name,
+		&user.NotificationWebhookURL,
 		&user.EmailVerified,
 		&user.VerifyToken,
 		&user.CreatedAt,
@@ -491,7 +493,7 @@ func (s *PostgresStore) GetUserByEmail(email string) (*models.User, error) {
 	defer cancel()
 
 	query := `
-		SELECT id, email, password_hash, COALESCE(name, ''), email_verified, COALESCE(verify_token, ''), created_at, updated_at
+		SELECT id, email, password_hash, COALESCE(name, ''), COALESCE(notification_webhook_url, ''), email_verified, COALESCE(verify_token, ''), created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -504,6 +506,7 @@ func (s *PostgresStore) GetUserByEmail(email string) (*models.User, error) {
 		&user.Email,
 		&user.PasswordHash,
 		&user.Name,
+		&user.NotificationWebhookURL,
 		&user.EmailVerified,
 		&user.VerifyToken,
 		&user.CreatedAt,
@@ -526,7 +529,7 @@ func (s *PostgresStore) GetUserByVerifyToken(token string) (*models.User, error)
 	defer cancel()
 
 	query := `
-		SELECT id, email, password_hash, COALESCE(name, ''), email_verified, COALESCE(verify_token, ''), created_at, updated_at
+		SELECT id, email, password_hash, COALESCE(name, ''), COALESCE(notification_webhook_url, ''), email_verified, COALESCE(verify_token, ''), created_at, updated_at
 		FROM users
 		WHERE verify_token = $1
 	`
@@ -539,6 +542,7 @@ func (s *PostgresStore) GetUserByVerifyToken(token string) (*models.User, error)
 		&user.Email,
 		&user.PasswordHash,
 		&user.Name,
+		&user.NotificationWebhookURL,
 		&user.EmailVerified,
 		&user.VerifyToken,
 		&user.CreatedAt,
@@ -566,7 +570,7 @@ func (s *PostgresStore) UpdateUser(user *models.User) error {
 
 	query := `
 		UPDATE users
-		SET email = $2, password_hash = $3, name = $4, email_verified = $5, verify_token = $6, updated_at = $7
+		SET email = $2, password_hash = $3, name = $4, notification_webhook_url = $5, email_verified = $6, verify_token = $7, updated_at = $8
 		WHERE id = $1
 	`
 
@@ -575,6 +579,7 @@ func (s *PostgresStore) UpdateUser(user *models.User) error {
 		user.Email,
 		user.PasswordHash,
 		user.Name,
+		user.NotificationWebhookURL,
 		user.EmailVerified,
 		user.VerifyToken,
 		user.UpdatedAt,

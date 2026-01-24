@@ -118,10 +118,7 @@ func main() {
 	}
 
 	// Initialize notification manager
-	notificationManager := notifier.NewNotificationManager(
-		cfg.NotificationWebhookURL,
-		cfg.NotificationTimeout,
-	)
+	notificationManager := notifier.NewNotificationManager(cfg.NotificationTimeout)
 
 	// Initialize JWT secret from config or storage
 	jwtSecret, err := initJWTSecret(st, cfg.JWT.Secret)
@@ -185,13 +182,18 @@ func main() {
 		r.Post("/login", authHandler.Login)
 		r.Post("/refresh", authHandler.Refresh)
 		r.Post("/resend-verify", authHandler.ResendVerify)
+
+		r.Group(func(r chi.Router) {
+			r.Use(authMiddleware.RequireAuth)
+			r.Post("/logout", authHandler.Logout)
+			r.Get("/me", authHandler.Me)
+			r.Put("/me", authHandler.UpdateMe)
+		})
 	})
 
 	// Protected API routes (JWT only)
 	r.Route("/api", func(r chi.Router) {
 		r.Use(authMiddleware.RequireAuth)
-		r.Post("/auth/logout", authHandler.Logout)
-		r.Get("/auth/me", authHandler.Me)
 
 		// API Key management
 		r.Route("/apikeys", func(r chi.Router) {

@@ -196,6 +196,12 @@ For Kubernetes deployments, use the provided deployment manifests (if available)
 | `PORT` | Server port | `8080` |
 | `CORS_ALLOWED_ORIGINS` | Allowed CORS origins (comma-separated) | `*` |
 | `NOTIFICATION_TIMEOUT_SECONDS` | Webhook notification timeout | `5` |
+| `APP_BASE_URL` | Frontend base URL (for email verification links, etc.) | `http://localhost:5173` |
+
+**Important**: When deploying to production, make sure to set `APP_BASE_URL` to your frontend address:
+```bash
+export APP_BASE_URL=https://your-domain.com
+```
 
 ### Database Configuration (Optional)
 
@@ -212,6 +218,38 @@ If any `DB_*` variable is set, PostgreSQL storage is used. Otherwise, in-memory 
 | `DB_MAX_OPEN_CONNS` | Max open connections | `25` |
 | `DB_MAX_IDLE_CONNS` | Max idle connections | `5` |
 | `DB_CONN_MAX_LIFETIME` | Connection max lifetime | `5m` |
+
+### Email Configuration (Optional)
+
+For user email verification functionality.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SMTP_HOST` | SMTP server address | - |
+| `SMTP_PORT` | SMTP port (587=STARTTLS, 465=SSL) | `587` |
+| `SMTP_USER` | SMTP username | - |
+| `SMTP_PASSWORD` | SMTP password | - |
+| `SMTP_FROM` | Sender email address | - |
+
+Example configuration (using Gmail):
+```bash
+export SMTP_HOST=smtp.gmail.com
+export SMTP_PORT=587
+export SMTP_USER=your-email@gmail.com
+export SMTP_PASSWORD=your-app-password
+export SMTP_FROM=your-email@gmail.com
+export APP_BASE_URL=https://your-domain.com
+```
+
+**Note**: Gmail requires an [App Password](https://support.google.com/accounts/answer/185833) instead of your account password.
+
+### JWT Configuration (Optional)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `JWT_SECRET` | JWT signing secret | Auto-generated |
+| `JWT_ACCESS_TOKEN_EXPIRY` | Access token expiry | `15m` |
+| `JWT_REFRESH_TOKEN_EXPIRY` | Refresh token expiry | `168h` |
 
 ## Integration with kubeagents-mcp
 

@@ -18,6 +18,30 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build: .
+    container_name: kubeagents-app
+    environment:
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: kubeagents
+      DB_PASSWORD: kubeagents
+      DB_NAME: kubeagents
+      # IMPORTANT: Set this to your frontend URL (e.g., https://your-domain.com)
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
+      # SMTP (optional - for email verification)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
     driver: local

@@ -193,6 +193,12 @@ docker run -d \
 | `PORT` | 服务器端口 | `8080` |
 | `CORS_ALLOWED_ORIGINS` | 允许的 CORS 来源（逗号分隔） | `*` |
 | `NOTIFICATION_TIMEOUT_SECONDS` | Webhook 通知超时时间 | `5` |
+| `APP_BASE_URL` | 前端基础 URL（用于邮件验证链接等） | `http://localhost:5173` |
+
+**重要提示**：部署到生产环境时，务必设置 `APP_BASE_URL` 为您的前端地址，例如：
+```bash
+export APP_BASE_URL=https://your-domain.com
+```
 
 ### 数据库配置（可选）
 
@@ -209,6 +215,38 @@ docker run -d \
 | `DB_MAX_OPEN_CONNS` | 最大打开连接数 | `25` |
 | `DB_MAX_IDLE_CONNS` | 最大空闲连接数 | `5` |
 | `DB_CONN_MAX_LIFETIME` | 连接最大生命周期 | `5m` |
+
+### 邮件配置（可选）
+
+用于用户注册邮箱验证功能。
+
+| 变量 | 描述 | 默认值 |
+|------|------|--------|
+| `SMTP_HOST` | SMTP 服务器地址 | - |
+| `SMTP_PORT` | SMTP 端口（587=STARTTLS, 465=SSL） | `587` |
+| `SMTP_USER` | SMTP 用户名 | - |
+| `SMTP_PASSWORD` | SMTP 密码 | - |
+| `SMTP_FROM` | 发件人邮箱地址 | - |
+
+配置示例（使用 Gmail）：
+```bash
+export SMTP_HOST=smtp.gmail.com
+export SMTP_PORT=587
+export SMTP_USER=your-email@gmail.com
+export SMTP_PASSWORD=your-app-password
+export SMTP_FROM=your-email@gmail.com
+export APP_BASE_URL=https://your-domain.com
+```
+
+**注意**：Gmail 需要使用[应用专用密码](https://support.google.com/accounts/answer/185833)而不是账户密码。
+
+### JWT 配置（可选）
+
+| 变量 | 描述 | 默认值 |
+|------|------|--------|
+| `JWT_SECRET` | JWT 签名密钥 | 自动生成 |
+| `JWT_ACCESS_TOKEN_EXPIRY` | 访问令牌有效期 | `15m` |
+| `JWT_REFRESH_TOKEN_EXPIRY` | 刷新令牌有效期 | `168h` |
 
 ## 与 kubeagents-mcp 集成
 

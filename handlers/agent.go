@@ -118,9 +118,9 @@ func (h *AgentHandler) calculateAgentStats(agentID string) AgentStats {
 		ActiveSessionCount: len(activeSessions),
 	}
 
-	// Find latest status across all sessions
+	// Find latest status across non-expired sessions
 	var latestStatus *models.AgentStatus
-	for _, session := range sessions {
+	for _, session := range activeSessions {
 		status, err := h.store.GetLatestStatus(agentID, session.SessionTopic)
 		if err != nil {
 			continue
@@ -140,7 +140,7 @@ func (h *AgentHandler) calculateAgentStats(agentID string) AgentStats {
 
 // getAgentLatestStatus gets the latest status for an agent
 func (h *AgentHandler) getAgentLatestStatus(agentID string) (string, error) {
-	sessions := h.store.ListSessions(agentID, true)
+	sessions := h.store.ListSessions(agentID, false)
 
 	var latestStatus *models.AgentStatus
 	for _, session := range sessions {

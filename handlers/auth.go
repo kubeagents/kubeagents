@@ -125,7 +125,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Send verification email (async, don't fail registration if email fails)
 	if h.emailService != nil {
 		log.Printf("[AUTH] Sending verification email to user: %s (email: %s)", user.ID, user.Email)
-		log.Printf("[AUTH] Verification token: %s", verifyToken)
 		go h.emailService.SendVerificationEmail(user.Email, verifyToken)
 	} else {
 		log.Printf("[AUTH] WARNING: Email service is not configured, verification email NOT sent to: %s", user.Email)
@@ -435,12 +434,14 @@ func (h *AuthHandler) ResendVerify(w http.ResponseWriter, r *http.Request) {
 	// Update user
 	user.VerifyToken = verifyToken
 	user.UpdatedAt = time.Now()
-	h.store.UpdateUser(user)
+	if err := h.store.UpdateUser(user); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to update verification token")
+		return
+	}
 
 	// Send verification email
 	if h.emailService != nil {
 		log.Printf("[AUTH] Resending verification email to user: %s (email: %s)", user.ID, user.Email)
-		log.Printf("[AUTH] New verification token: %s", verifyToken)
 		go h.emailService.SendVerificationEmail(user.Email, verifyToken)
 	} else {
 		log.Printf("[AUTH] WARNING: Email service is not configured, resend verification email NOT sent to: %s", user.Email)

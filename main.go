@@ -131,7 +131,7 @@ func main() {
 
 	// Initialize email service (optional - will be nil if SMTP not configured)
 	var emailService *email.EmailService
-	if cfg.SMTP.Host != "" && cfg.SMTP.User != "" {
+	if cfg.SMTP.Host != "" && cfg.SMTP.FromEmail != "" {
 		emailService = email.NewEmailService(email.EmailConfig{
 			SMTPHost:   cfg.SMTP.Host,
 			SMTPPort:   cfg.SMTP.Port,

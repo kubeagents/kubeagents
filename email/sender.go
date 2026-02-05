@@ -89,9 +89,8 @@ func (s *EmailService) SendVerificationEmail(toEmail, verifyToken string) error 
 		return err
 	}
 
-	// Log user and verification link
-	verifyLink := fmt.Sprintf("%s/verify?token=%s", s.config.AppBaseURL, verifyToken)
-	log.Printf("[EMAIL] User: %s, Verification link: %s", toEmail, verifyLink)
+	// Log user only (avoid logging sensitive verification links)
+	log.Printf("[EMAIL] User: %s", toEmail)
 
 	err = s.sendMail(toEmail, subject, body)
 	if err != nil {
@@ -106,9 +105,9 @@ func (s *EmailService) sendMail(to, subject, body string) error {
 	from := s.config.FromEmail
 	addr := fmt.Sprintf("%s:%d", s.config.SMTPHost, s.config.SMTPPort)
 
-	// Build email message
-	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
-	msg := []byte(fmt.Sprintf("To: %s\r\nFrom: %s\r\nSubject: %s\r\n%s\r\n%s",
+	// Build email message (RFC 5322 line endings)
+	mime := "MIME-version: 1.0;\r\nContent-Type: text/html; charset=\"UTF-8\";\r\n\r\n"
+	msg := []byte(fmt.Sprintf("To: %s\r\nFrom: %s\r\nSubject: %s\r\n%s%s",
 		to, from, subject, mime, body))
 
 	// Create auth if credentials provided
@@ -180,6 +179,13 @@ func (s *EmailService) sendMailSSL(addr string, auth smtp.Auth, from, to string,
 	_, err = writer.Write(msg)
 	if err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close data writer: %w", err)
+	}
+
+	if err := client.Quit(); err != nil {
+		return fmt.Errorf("failed to close SMTP session: %w", err)
 	}
 
 	return nil

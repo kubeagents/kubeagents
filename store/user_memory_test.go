@@ -337,8 +337,8 @@ func TestMemoryStore_RefreshTokens(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 
-	// Test RevokeRefreshToken
-	err = st.RevokeRefreshToken("hash-123")
+	// Test RevokeRefreshToken (by ID)
+	err = st.RevokeRefreshToken("token-1")
 	if err != nil {
 		t.Fatalf("RevokeRefreshToken failed: %v", err)
 	}

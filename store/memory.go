@@ -186,11 +186,16 @@ func (s *MemoryStore) GetStatusHistory(agentID, sessionTopic string) ([]*models.
 
 // GetLatestStatus returns the latest status for a session
 func (s *MemoryStore) GetLatestStatus(agentID, sessionTopic string) (*models.AgentStatus, error) {
-	history, err := s.GetStatusHistory(agentID, sessionTopic)
-	if err != nil {
-		return nil, err
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	statuses, exists := s.statuses[agentID]
+	if !exists {
+		return nil, ErrNotFound
 	}
-	if len(history) == 0 {
+
+	history, exists := statuses[sessionTopic]
+	if !exists || len(history) == 0 {
 		return nil, ErrNotFound
 	}
 
@@ -201,7 +206,10 @@ func (s *MemoryStore) GetLatestStatus(agentID, sessionTopic string) (*models.Age
 			latest = status
 		}
 	}
-	return latest, nil
+
+	// Return a copy to avoid data race on the pointer
+	result := *latest
+	return &result, nil
 }
 
 // CheckExpiredSessions checks and marks expired sessions
@@ -338,8 +346,20 @@ func (s *MemoryStore) SaveRefreshToken(token *models.RefreshToken) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.refreshTokens[token.TokenHash] = token
+	s.refreshTokens[token.ID] = token
 	return nil
+}
+
+// GetRefreshTokenByID retrieves a refresh token by ID
+func (s *MemoryStore) GetRefreshTokenByID(tokenID string) (*models.RefreshToken, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	token, exists := s.refreshTokens[tokenID]
+	if !exists {
+		return nil, ErrNotFound
+	}
+	return token, nil
 }
 
 // GetRefreshToken retrieves a refresh token by hash
@@ -347,19 +367,20 @@ func (s *MemoryStore) GetRefreshToken(tokenHash string) (*models.RefreshToken, e
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	token, exists := s.refreshTokens[tokenHash]
-	if !exists {
-		return nil, ErrNotFound
+	for _, token := range s.refreshTokens {
+		if token.TokenHash == tokenHash {
+			return token, nil
+		}
 	}
-	return token, nil
+	return nil, ErrNotFound
 }
 
-// RevokeRefreshToken revokes a refresh token
-func (s *MemoryStore) RevokeRefreshToken(tokenHash string) error {
+// RevokeRefreshToken revokes a refresh token by ID
+func (s *MemoryStore) RevokeRefreshToken(tokenID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	token, exists := s.refreshTokens[tokenHash]
+	token, exists := s.refreshTokens[tokenID]
 	if !exists {
 		return ErrNotFound
 	}

@@ -2,10 +2,12 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kubeagents/kubeagents/models"
 )
@@ -629,6 +631,39 @@ func (s *PostgresStore) SaveRefreshToken(token *models.RefreshToken) error {
 	return nil
 }
 
+// GetRefreshTokenByID retrieves a refresh token by ID
+func (s *PostgresStore) GetRefreshTokenByID(tokenID string) (*models.RefreshToken, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT id, user_id, token_hash, expires_at, created_at, revoked
+		FROM refresh_tokens
+		WHERE id = $1
+	`
+
+	row := s.pool.QueryRow(ctx, query, tokenID)
+
+	var token models.RefreshToken
+	err := row.Scan(
+		&token.ID,
+		&token.UserID,
+		&token.TokenHash,
+		&token.ExpiresAt,
+		&token.CreatedAt,
+		&token.Revoked,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get refresh token by ID: %w", err)
+	}
+
+	return &token, nil
+}
+
 // GetRefreshToken retrieves a refresh token by hash
 func (s *PostgresStore) GetRefreshToken(tokenHash string) (*models.RefreshToken, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -662,18 +697,18 @@ func (s *PostgresStore) GetRefreshToken(tokenHash string) (*models.RefreshToken,
 	return &token, nil
 }
 
-// RevokeRefreshToken revokes a refresh token
-func (s *PostgresStore) RevokeRefreshToken(tokenHash string) error {
+// RevokeRefreshToken revokes a refresh token by ID
+func (s *PostgresStore) RevokeRefreshToken(tokenID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	query := `
 		UPDATE refresh_tokens
 		SET revoked = true
-		WHERE token_hash = $1
+		WHERE id = $1
 	`
 
-	result, err := s.pool.Exec(ctx, query, tokenHash)
+	result, err := s.pool.Exec(ctx, query, tokenID)
 	if err != nil {
 		return fmt.Errorf("failed to revoke refresh token: %w", err)
 	}
@@ -932,7 +967,9 @@ func (s *PostgresStore) SetConfig(key, value string) error {
 
 // isDuplicateKeyError checks if the error is a duplicate key violation
 func isDuplicateKeyError(err error) bool {
-	// PostgreSQL unique violation error code is 23505
-	return err != nil && (err.Error() == "ERROR: duplicate key value violates unique constraint" ||
-		(len(err.Error()) > 0 && err.Error()[:5] == "ERROR"))
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505" // unique_violation
+	}
+	return false
 }

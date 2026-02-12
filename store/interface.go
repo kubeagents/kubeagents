@@ -14,8 +14,9 @@ type Store interface {
 
 	// Refresh token operations
 	SaveRefreshToken(token *models.RefreshToken) error
+	GetRefreshTokenByID(tokenID string) (*models.RefreshToken, error)
 	GetRefreshToken(tokenHash string) (*models.RefreshToken, error)
-	RevokeRefreshToken(tokenHash string) error
+	RevokeRefreshToken(tokenID string) error
 	RevokeAllUserTokens(userID string) error
 
 	// API Key operations

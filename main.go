@@ -97,16 +97,18 @@ func main() {
 			log.Fatalf("Failed to connect to database: %v", err)
 		}
 
-		// Run database migrations
-		conn, err := pgStore.Pool().Acquire(context.Background())
-		if err != nil {
-			log.Fatalf("Failed to acquire database connection: %v", err)
-		}
-		defer conn.Release()
+		// Run database migrations (release connection immediately after)
+		func() {
+			conn, err := pgStore.Pool().Acquire(context.Background())
+			if err != nil {
+				log.Fatalf("Failed to acquire database connection: %v", err)
+			}
+			defer conn.Release()
 
-		if err := store.RunMigrations(context.Background(), conn.Conn()); err != nil {
-			log.Fatalf("Failed to run migrations: %v", err)
-		}
+			if err := store.RunMigrations(context.Background(), conn.Conn()); err != nil {
+				log.Fatalf("Failed to run migrations: %v", err)
+			}
+		}()
 
 		st = pgStore
 		closeDB = func() { pgStore.Close() }
@@ -257,31 +259,15 @@ func main() {
 	log.Println("Shutting down server...")
 	cancel()
 
-	// Shutdown HTTP server first (stop accepting new connections)
+	// Shutdown HTTP server (stop accepting new connections)
 	log.Println("Shutting down HTTP server...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
 
-	// Create shutdown context with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
-
-	// Start shutdown in goroutine
-	shutdownDone := make(chan struct{})
-	go func() {
-		defer close(shutdownDone)
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("HTTP server shutdown error: %v", err)
-		} else {
-			log.Println("HTTP server shutdown complete")
-		}
-		shutdownCancel() // Cancel context after shutdown completes
-	}()
-
-	// Wait for shutdown or force exit after timeout
-	select {
-	case <-shutdownDone:
-		// Normal shutdown completed
-	case <-time.After(5 * time.Second):
-		log.Println("Shutdown timeout, forcing exit...")
-		os.Exit(0)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	} else {
+		log.Println("HTTP server shutdown complete")
 	}
 
 	// Shutdown notification manager (wait for pending notifications)
@@ -295,21 +281,11 @@ func main() {
 
 	log.Println("Notification manager shutdown complete")
 
-	// Close database connection with timeout
+	// Close database connection
 	if closeDB != nil {
 		log.Println("Closing database connection...")
-		dbCloseDone := make(chan struct{})
-		go func() {
-			closeDB()
-			close(dbCloseDone)
-		}()
-
-		select {
-		case <-dbCloseDone:
-			log.Println("Database connection closed")
-		case <-time.After(3 * time.Second):
-			log.Println("Database connection close timeout, continuing...")
-		}
+		closeDB()
+		log.Println("Database connection closed")
 	}
 
 	log.Println("Server exited")

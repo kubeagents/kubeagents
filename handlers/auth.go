@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -66,8 +67,18 @@ type AuthResponse struct {
 	ExpiresIn    int          `json:"expires_in"` // seconds
 }
 
+// maxRequestBodySize is the maximum allowed request body size (1MB)
+const maxRequestBodySize = 1 << 20
+
+// hashRefreshToken computes SHA256 hash of a refresh token for storage
+func hashRefreshToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
 // Register handles user registration
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
@@ -186,8 +197,8 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save refresh token
-	refreshTokenHash, _ := auth.HashPassword(refreshToken)
+	// Save refresh token using SHA256 hash
+	refreshTokenHash := hashRefreshToken(refreshToken)
 	rt := &models.RefreshToken{
 		ID:        uuid.New().String(),
 		UserID:    user.ID,
@@ -196,7 +207,10 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 		Revoked:   false,
 	}
-	h.store.SaveRefreshToken(rt)
+	if err := h.store.SaveRefreshToken(rt); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save session")
+		return
+	}
 
 	respondJSON(w, http.StatusOK, AuthResponse{
 		User:         user,
@@ -208,6 +222,7 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 
 // Login handles user login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
@@ -250,8 +265,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save refresh token
-	refreshTokenHash, _ := auth.HashPassword(refreshToken)
+	// Save refresh token using SHA256 hash
+	refreshTokenHash := hashRefreshToken(refreshToken)
 	rt := &models.RefreshToken{
 		ID:        uuid.New().String(),
 		UserID:    user.ID,
@@ -260,7 +275,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 		Revoked:   false,
 	}
-	h.store.SaveRefreshToken(rt)
+	if err := h.store.SaveRefreshToken(rt); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save session")
+		return
+	}
 
 	respondJSON(w, http.StatusOK, AuthResponse{
 		User:         user,
@@ -272,17 +290,39 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Refresh handles token refresh
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	var req RefreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	// Validate refresh token
+	// Validate refresh token JWT signature
 	claims, err := h.jwtService.ValidateRefreshToken(req.RefreshToken)
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, "invalid or expired refresh token")
 		return
+	}
+
+	// Verify refresh token exists in DB and is not revoked
+	tokenHash := hashRefreshToken(req.RefreshToken)
+	storedToken, err := h.store.GetRefreshToken(tokenHash)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "invalid or expired refresh token")
+		return
+	}
+	if storedToken.Revoked {
+		respondError(w, http.StatusUnauthorized, "refresh token has been revoked")
+		return
+	}
+	if time.Now().After(storedToken.ExpiresAt) {
+		respondError(w, http.StatusUnauthorized, "refresh token has expired")
+		return
+	}
+
+	// Revoke the old refresh token (token rotation)
+	if err := h.store.RevokeRefreshToken(storedToken.ID); err != nil {
+		log.Printf("Failed to revoke old refresh token: %v", err)
 	}
 
 	// Get user
@@ -305,17 +345,20 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save new refresh token
-	refreshTokenHash, _ := auth.HashPassword(newRefreshToken)
+	// Save new refresh token using SHA256 hash
+	newRefreshTokenHash := hashRefreshToken(newRefreshToken)
 	rt := &models.RefreshToken{
 		ID:        uuid.New().String(),
 		UserID:    user.ID,
-		TokenHash: refreshTokenHash,
+		TokenHash: newRefreshTokenHash,
 		ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
 		CreatedAt: time.Now(),
 		Revoked:   false,
 	}
-	h.store.SaveRefreshToken(rt)
+	if err := h.store.SaveRefreshToken(rt); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save session")
+		return
+	}
 
 	respondJSON(w, http.StatusOK, AuthResponse{
 		User:         user,
@@ -366,6 +409,7 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	var req UpdateMeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
@@ -398,6 +442,7 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 
 // ResendVerify resends the verification email
 func (h *AuthHandler) ResendVerify(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	var req struct {
 		Email string `json:"email"`
 	}

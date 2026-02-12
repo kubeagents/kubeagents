@@ -54,6 +54,9 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Limit request body size (1MB)
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	// Parse request body
 	var statusReport internal.StatusReport
 	if err := json.NewDecoder(r.Body).Decode(&statusReport); err != nil {
@@ -168,12 +171,13 @@ func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport, userID s
 		return err
 	}
 
-	// Add status to history
+	// Add status to history (use server-side timestamp as authoritative time)
+	serverNow := time.Now().UTC()
 	agentStatus := &models.AgentStatus{
 		AgentID:      sr.AgentID,
 		SessionTopic: sr.SessionTopic,
 		Status:       sr.Status,
-		Timestamp:    sr.Timestamp,
+		Timestamp:    serverNow,
 		Message:      sr.Message,
 		Content:      sr.Content,
 	}
@@ -189,7 +193,7 @@ func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport, userID s
 
 		duration := time.Duration(0)
 		if !startTimestamp.IsZero() {
-			duration = sr.Timestamp.Sub(startTimestamp)
+			duration = serverNow.Sub(startTimestamp)
 		}
 
 		notificationData := &notifier.NotificationData{
@@ -198,7 +202,7 @@ func (h *WebhookHandler) processStatusReport(sr *internal.StatusReport, userID s
 			SessionTopic: sr.SessionTopic,
 			FromStatus:   previousStatus,
 			ToStatus:     sr.Status,
-			Timestamp:    sr.Timestamp,
+			Timestamp:    serverNow,
 			Message:      sr.Message,
 			Content:      sr.Content,
 			Duration:     duration,
